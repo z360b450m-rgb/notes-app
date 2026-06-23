@@ -4,15 +4,14 @@ import { ref, computed } from 'vue'
 import { useAiSkills } from '../composables/useAiSkills'
 import type { AiSkill } from '../types'
 
-const { skills, create, update, remove, resetToDefaults, exportJson, importJson } =
-  useAiSkills()
+const { skills, create, update, remove, resetToDefaults, exportJson, importJson } = useAiSkills()
 
 const editingId = ref<string | null>(null)
 const importText = ref('')
 const showImport = ref(false)
 
 const editing = computed<AiSkill | null>(() =>
-  editingId.value ? skills.value.find((s) => s.id === editingId.value) ?? null : null,
+  editingId.value ? (skills.value.find((s) => s.id === editingId.value) ?? null) : null,
 )
 
 function startEdit(id: string) {
@@ -74,13 +73,14 @@ function doImport() {
           />
           <span
             class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-accent/10 text-accent flex-shrink-0"
-          >/{{ s.trigger || '?' }}</span>
+            >/{{ s.trigger || '?' }}</span
+          >
           <span class="text-xs text-gray-800 dark:text-brand-light truncate flex-1">
             {{ s.name }}
           </span>
-          <span
-            class="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0"
-          >{{ s.scope === 'entry' ? '错题' : s.scope === 'global' ? '全库' : '通用' }}</span>
+          <span class="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">{{
+            s.scope === 'entry' ? '错题' : s.scope === 'global' ? '全库' : '通用'
+          }}</span>
           <button
             class="text-[11px] px-1.5 py-0.5 rounded text-gray-500 hover:text-gray-800 dark:hover:text-brand-light hover:bg-gray-200 dark:hover:bg-[#2a2a28]"
             @click="editingId === s.id ? (editingId = null) : startEdit(s.id)"
@@ -137,7 +137,9 @@ function doImport() {
             <select
               class="mt-1 w-full text-xs px-2 py-1 rounded border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] text-gray-800 dark:text-brand-light outline-none focus:border-accent"
               :value="editing.scope"
-              @change="commitField('scope', ($event.target as HTMLSelectElement).value as AiSkill['scope'])"
+              @change="
+                commitField('scope', ($event.target as HTMLSelectElement).value as AiSkill['scope'])
+              "
             >
               <option value="both">通用（错题模式 + 全库模式都可用）</option>
               <option value="entry">仅错题模式</option>

@@ -13,12 +13,8 @@ export interface KnowledgeBase {
   is_default?: boolean
 }
 
-const kbs = ref<KnowledgeBase[]>([
-  { id: DEFAULT_KB_ID, name: '错题库', is_default: true },
-])
-const currentKbId = ref<string>(
-  localStorage.getItem(SELECTED_KB_KEY) || DEFAULT_KB_ID,
-)
+const kbs = ref<KnowledgeBase[]>([{ id: DEFAULT_KB_ID, name: '错题库', is_default: true }])
+const currentKbId = ref<string>(localStorage.getItem(SELECTED_KB_KEY) || DEFAULT_KB_ID)
 const loading = ref(false)
 const lastError = ref<string | null>(null)
 

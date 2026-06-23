@@ -105,7 +105,6 @@ export function useAiChat(options?: { baseUrl?: string; threadId?: string }) {
         if (done) break
         buffer += decoder.decode(value, { stream: true })
 
-        // eslint-disable-next-line no-constant-condition
         while (true) {
           const { idx, len } = findSep(buffer)
           if (idx === -1) break

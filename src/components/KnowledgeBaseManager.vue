@@ -16,6 +16,11 @@ const busyMsg = ref<string | null>(null)
 const renamingId = ref<string | null>(null)
 const renameDraft = ref('')
 
+function startRename(kb: { id: string; name: string }) {
+  renamingId.value = kb.id
+  renameDraft.value = kb.name
+}
+
 async function doCreate() {
   const id = newId.value.trim().toLowerCase()
   if (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(id)) {
@@ -44,7 +49,12 @@ async function doRename(id: string) {
 }
 
 async function doRemove(id: string, name: string) {
-  if (!window.confirm(`删除知识库「${name}」？\n会同时删除其所有索引数据（不删除 data/${id}/ 文件夹）`)) return
+  if (
+    !window.confirm(
+      `删除知识库「${name}」？\n会同时删除其所有索引数据（不删除 data/${id}/ 文件夹）`,
+    )
+  )
+    return
   try {
     await remove(id)
   } catch (e) {
@@ -64,7 +74,8 @@ async function copyDataDir(id: string) {
 }
 
 async function doReindex(id: string, name: string) {
-  if (!window.confirm(`重建「${name}」索引？\n会清空该库已有 chunk，然后扫描 data/${id}/ 重新入库`)) return
+  if (!window.confirm(`重建「${name}」索引？\n会清空该库已有 chunk，然后扫描 data/${id}/ 重新入库`))
+    return
   busyMsg.value = `正在重建 ${name}…`
   try {
     const r = await reindex(id, true)
@@ -100,59 +111,73 @@ async function doReindex(id: string, name: string) {
           </template>
           <template v-else>
             📚 {{ k.name }}
-            <span class="text-[10px] text-gray-400 dark:text-gray-500 font-mono ml-1">{{ k.id }}</span>
-            <span
-              v-if="k.is_default"
-              class="text-[10px] text-accent ml-1"
-            >默认</span>
+            <span class="text-[10px] text-gray-400 dark:text-gray-500 font-mono ml-1">{{
+              k.id
+            }}</span>
+            <span v-if="k.is_default" class="text-[10px] text-accent ml-1">默认</span>
           </template>
         </span>
 
         <template v-if="renamingId === k.id">
-          <button class="text-[11px] px-1.5 py-0.5 text-accent" @click="doRename(k.id)">保存</button>
-          <button
-            class="text-[11px] px-1.5 py-0.5 text-gray-500"
-            @click="renamingId = null"
-          >取消</button>
+          <button class="text-[11px] px-1.5 py-0.5 text-accent" @click="doRename(k.id)">
+            保存
+          </button>
+          <button class="text-[11px] px-1.5 py-0.5 text-gray-500" @click="renamingId = null">
+            取消
+          </button>
         </template>
         <template v-else>
           <button
             class="text-[11px] px-1.5 py-0.5 rounded text-gray-500 hover:text-gray-800 dark:hover:text-brand-light hover:bg-gray-100 dark:hover:bg-[#2a2a28]"
             title="复制 data/ 路径"
             @click="copyDataDir(k.id)"
-          >路径</button>
+          >
+            路径
+          </button>
           <button
             class="text-[11px] px-1.5 py-0.5 rounded text-gray-500 hover:text-gray-800 dark:hover:text-brand-light hover:bg-gray-100 dark:hover:bg-[#2a2a28]"
             title="清空并重建索引（扫描 data/<id>/）"
             @click="doReindex(k.id, k.name)"
-          >重建</button>
+          >
+            重建
+          </button>
           <button
             class="text-[11px] px-1.5 py-0.5 rounded text-gray-500 hover:text-gray-800 dark:hover:text-brand-light hover:bg-gray-100 dark:hover:bg-[#2a2a28]"
-            @click="renamingId = k.id; renameDraft = k.name"
-          >改名</button>
+            @click="startRename(k)"
+          >
+            改名
+          </button>
           <button
             v-if="!k.is_default"
             class="text-[11px] px-1.5 py-0.5 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
             @click="doRemove(k.id, k.name)"
-          >删</button>
+          >
+            删
+          </button>
         </template>
       </div>
       <div
         v-if="k.description && renamingId !== k.id"
         class="text-[10px] text-gray-400 dark:text-gray-500 mt-1 leading-snug"
-      >{{ k.description }}</div>
+      >
+        {{ k.description }}
+      </div>
     </div>
 
     <div class="flex gap-2 pt-1">
       <button
         class="text-xs px-2.5 py-1 rounded bg-accent text-white hover:bg-accent/90"
         @click="showCreate = !showCreate"
-      >+ 新建知识库</button>
+      >
+        + 新建知识库
+      </button>
       <button
         class="text-xs px-2.5 py-1 rounded border border-gray-200 dark:border-[#2e2e2c] text-gray-700 dark:text-brand-light hover:bg-gray-100 dark:hover:bg-[#2a2a28]"
         :disabled="loading"
         @click="refresh"
-      >刷新</button>
+      >
+        刷新
+      </button>
     </div>
 
     <div
@@ -188,11 +213,14 @@ async function doReindex(id: string, name: string) {
       <button
         class="text-xs px-2.5 py-1 rounded bg-accent text-white hover:bg-accent/90"
         @click="doCreate"
-      >确认</button>
+      >
+        确认
+      </button>
     </div>
 
     <div class="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed pt-1">
-      用法：① 新建库后点「路径」拿到 data/&lt;id&gt;/ 目录 ② 把 PDF/MD/TXT 拷进去 ③ 点「重建」生成索引 ④ 聊天侧栏切换库即可问答
+      用法：① 新建库后点「路径」拿到 data/&lt;id&gt;/ 目录 ② 把 PDF/MD/TXT 拷进去 ③
+      点「重建」生成索引 ④ 聊天侧栏切换库即可问答
     </div>
   </div>
 </template>

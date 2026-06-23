@@ -243,10 +243,7 @@ function onWheel(e: WheelEvent) {
       />
 
       <div ref="mainArea" class="flex-1 flex flex-col min-h-0 canvas-host" @wheel="onWheel">
-        <div
-          v-if="mode === 'edit' && activeEntry"
-          class="flex-1 flex flex-row min-h-0"
-        >
+        <div v-if="mode === 'edit' && activeEntry" class="flex-1 flex flex-row min-h-0">
           <NoteEditor
             class="flex-1 min-w-0"
             :entry="activeEntry"

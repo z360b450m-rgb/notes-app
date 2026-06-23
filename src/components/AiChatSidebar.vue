@@ -40,9 +40,7 @@ const triggerHit = computed(() => {
 
 // 当前 scope 下可用的 skill 列表，展示给用户参考
 const availableSkills = computed(() =>
-  enabledSkills.value.filter(
-    (s) => s.scope === 'both' || s.scope === currentScope.value,
-  ),
+  enabledSkills.value.filter((s) => s.scope === 'both' || s.scope === currentScope.value),
 )
 
 // 切换错题时清空对话，避免上下文串题
@@ -94,9 +92,7 @@ function onKeydown(e: KeyboardEvent) {
 watch(
   () =>
     messages.value.length +
-    (messages.value.length
-      ? messages.value[messages.value.length - 1].content.length
-      : 0),
+    (messages.value.length ? messages.value[messages.value.length - 1].content.length : 0),
   async () => {
     await nextTick()
     if (listRef.value) {
@@ -115,9 +111,9 @@ watch(
       <div class="flex items-center justify-between px-3 py-2">
         <div class="flex items-baseline gap-2 min-w-0">
           <span class="text-sm font-medium text-gray-800 dark:text-brand-light">{{ title }}</span>
-          <span
-            class="text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent flex-shrink-0"
-          >{{ scope }}</span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent flex-shrink-0">{{
+            scope
+          }}</span>
         </div>
         <button
           class="text-xs px-2 py-1 rounded text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-brand-light hover:bg-gray-100 dark:hover:bg-[#2a2a28] transition-colors"
@@ -140,10 +136,7 @@ watch(
     </div>
 
     <!-- 消息列表 -->
-    <div
-      ref="listRef"
-      class="flex-1 overflow-y-auto px-3 py-3 space-y-3 text-sm"
-    >
+    <div ref="listRef" class="flex-1 overflow-y-auto px-3 py-3 space-y-3 text-sm">
       <div
         v-if="messages.length === 0"
         class="text-xs text-gray-400 dark:text-gray-500 text-center mt-8 leading-relaxed px-2"
@@ -181,10 +174,7 @@ watch(
 
           <!-- 正文 -->
           <div v-if="m.content">{{ m.content }}</div>
-          <div
-            v-else-if="m.streaming"
-            class="text-xs text-gray-400 dark:text-gray-500"
-          >
+          <div v-else-if="m.streaming" class="text-xs text-gray-400 dark:text-gray-500">
             思考中…
           </div>
 
@@ -223,12 +213,11 @@ watch(
     <!-- 输入区 -->
     <div class="border-t border-gray-200 dark:border-[#2e2e2c] p-2">
       <!-- skill 触发命中提示 -->
-      <div
-        v-if="triggerHit"
-        class="text-[11px] text-accent mb-1 px-1"
-      >
+      <div v-if="triggerHit" class="text-[11px] text-accent mb-1 px-1">
         ✓ 已应用「{{ triggerHit.skill.name }}」
-        <span class="text-gray-400 dark:text-gray-500">— {{ triggerHit.skill.description || triggerHit.skill.systemPrompt.slice(0, 30) }}</span>
+        <span class="text-gray-400 dark:text-gray-500"
+          >— {{ triggerHit.skill.description || triggerHit.skill.systemPrompt.slice(0, 30) }}</span
+        >
       </div>
 
       <!-- 可用 skill 速查（折叠在 details 里，不占位） -->

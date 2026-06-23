@@ -44,12 +44,10 @@ export function parsePdfWithRange(text: string, options: ParseOptions) {
       const nextIndex = text.search(nextRegex)
 
       if (startIndex !== -1) {
-        let questionText = ''
-        if (nextIndex !== -1) {
-          questionText = text.substring(startIndex, nextIndex).trim()
-        } else {
-          questionText = text.substring(startIndex).trim()
-        }
+        const questionText =
+          nextIndex !== -1
+            ? text.substring(startIndex, nextIndex).trim()
+            : text.substring(startIndex).trim()
 
         questions.push({
           title: `第 ${currentNum} 题`,

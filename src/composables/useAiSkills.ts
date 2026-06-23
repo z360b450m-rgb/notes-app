@@ -37,8 +37,7 @@ function builtinSeeds(): AiSkill[] {
       name: '极简答案',
       trigger: '答',
       description: '只给关键答案，不要长篇大论',
-      systemPrompt:
-        '直接给最关键的答案或结论，不超过 3 句话，禁止使用 markdown 标题和加粗。',
+      systemPrompt: '直接给最关键的答案或结论，不超过 3 句话，禁止使用 markdown 标题和加粗。',
       scope: 'both',
       enabled: true,
       updatedAt: now,
@@ -128,9 +127,7 @@ export function useAiSkills() {
     const trigger = m[1]
     const rest = m[2].trim()
     const skill = enabledSkills.value.find(
-      (s) =>
-        s.trigger === trigger &&
-        (s.scope === 'both' || s.scope === scope),
+      (s) => s.trigger === trigger && (s.scope === 'both' || s.scope === scope),
     )
     if (!skill) return null
     return { skill, question: rest || input }

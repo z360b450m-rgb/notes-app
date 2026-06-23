@@ -4,30 +4,15 @@ import { useModalAnimations } from '@/composables/useModalAnimations'
 
 defineProps<{ visible: boolean }>()
 
-export interface ImportOptions {
-  mode: 'default' | 'sequential'
-  startNum: number
-  endNum: number
-}
-
 const emit = defineEmits<{
   keep: []
   reset: []
   cancel: []
-  confirm: [options: ImportOptions]
 }>()
 
 const importMode = ref<'default' | 'sequential'>('default')
 const startNum = ref<number>(1)
 const endNum = ref<number>(120)
-
-function getImportOptions(): ImportOptions {
-  return {
-    mode: importMode.value,
-    startNum: startNum.value,
-    endNum: endNum.value,
-  }
-}
 
 const { enterModal, leaveModal } = useModalAnimations()
 </script>
@@ -67,11 +52,17 @@ const { enterModal, leaveModal } = useModalAnimations()
         </div>
 
         <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">导入模式</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            >导入模式</label
+          >
           <div class="flex gap-2">
             <button
               type="button"
-              :class="[importMode === 'default' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300']"
+              :class="[
+                importMode === 'default'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+              ]"
               class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
               @click="importMode = 'default'"
             >
@@ -79,7 +70,11 @@ const { enterModal, leaveModal } = useModalAnimations()
             </button>
             <button
               type="button"
-              :class="[importMode === 'sequential' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300']"
+              :class="[
+                importMode === 'sequential'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+              ]"
               class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
               @click="importMode = 'sequential'"
             >
@@ -90,7 +85,9 @@ const { enterModal, leaveModal } = useModalAnimations()
 
         <div v-if="importMode === 'sequential'" class="grid grid-cols-2 gap-3 mb-4">
           <div>
-            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">开始题号</label>
+            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >开始题号</label
+            >
             <input
               v-model.number="startNum"
               type="number"
@@ -100,7 +97,9 @@ const { enterModal, leaveModal } = useModalAnimations()
             />
           </div>
           <div>
-            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">结束题号</label>
+            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >结束题号</label
+            >
             <input
               v-model.number="endNum"
               type="number"
