@@ -30,6 +30,36 @@
 
 完整功能列表见 [FEATURES.md](./FEATURES.md)。
 
+## RAG 智能问答后端
+
+本项目集成了独立的 **RAG-AIAgent** 后端服务（位于子目录 `RAG-AIAgent/`），为错题本提供两种 AI 问答模式：
+
+- **锁定错题模式**：在错题编辑页问"这题怎么做"，AI 基于当前错题作答（不检索）
+- **全库 RAG 模式**：在错题本概览页问"我有哪些数学错题"，AI 通过工具调用语义检索知识库后作答
+
+### 后端技术栈
+
+| 层级 | 技术 |
+| ---- | ---- |
+| Web 框架 | FastAPI + Uvicorn + sse-starlette |
+| Agent 编排 | LangChain 1.x `create_agent`（内置状态机） |
+| LLM | DeepSeek `deepseek-chat`（云端） |
+| Embedding | SiliconFlow `BAAI/bge-large-zh-v1.5`（云端，1024 维） |
+| 向量库 | Qdrant Cloud（云端，每个 KB 一个 collection） |
+
+**本地零模型下载**——所有 LLM / Embedding / 向量库都在云端，启动即用。
+
+### 启动后端
+
+```bash
+cd RAG-AIAgent
+pip install -r requirements.txt
+# 复制 .env.example → .env，填入三套云 API key（DeepSeek / SiliconFlow / Qdrant）
+python -m uvicorn src.api:app --host 0.0.0.0 --port 8000
+```
+
+完整搭建步骤见 [HOW_TO_BUILD.md](./HOW_TO_BUILD.md)，架构详解见 [TECH_OVERVIEW.md](./TECH_OVERVIEW.md)，复用蓝本见 [AGENT_APP_TEMPLATE.md](./AGENT_APP_TEMPLATE.md)。
+
 ## 技术栈
 
 | 层级     | 技术                                         |

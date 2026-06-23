@@ -1,16 +1,16 @@
 # 从零做一遍这个项目 · 完整流程清单
 
-把这套 **notes-app（Electron 错题本）+ RAG-AIAgent（本地 RAG 服务）** 从空白机器一步一步搭起来要做什么，全在这。按顺序读。
+把这套 **notes-app（Electron 错题本）+ RAG-AIAgent（云原生 RAG 服务）** 从空白机器一步一步搭起来要做什么，全在这。按顺序读。
 
 ---
 
 ## 〇、项目最终长什么样
 
 - **前端**：Vue 3 + Electron 桌面错题本，内嵌 AI 问答侧栏，支持多知识库
-- **后端**：Python FastAPI + LangGraph，跑本地 RAG（DeepSeek + 中文 Embedding + Chroma 向量库）
+- **后端**：Python FastAPI，跑云原生 RAG（DeepSeek + SiliconFlow + Qdrant Cloud），**本地零模型下载**
 - **协作**：错题保存自动同步进 RAG 索引；提问可锁定单题或全库检索
 
-部署形态：**两个服务都跑在本机**，前端 `localhost:5173`，后端 `localhost:8000`。
+部署形态：**两个服务都跑在本机**，前端 `localhost:5173`（或 5174），后端 `localhost:8000`。后端拨打的所有模型 / 向量库 API 都是云端。
 
 ---
 
@@ -34,14 +34,15 @@
 | Prettier | 自动格式化 |
 | Python | 后端调试 |
 | Pylance | Python 类型检查 |
+| Even Better TOML | `.env` 高亮 |
 
 ### 命令行环境
 
-Windows 用户推荐 **Git Bash**（Git 自带）或 **PowerShell 7+**，不要用 cmd（编码会爆炸）。
+Windows 用户推荐 **Git Bash**（Git 自带）或 **PowerShell 7+**，不要用 cmd（中文 emoji 编码会爆炸）。
 
 ---
 
-## 二、申请外部服务（一次性）
+## 二、申请外部服务（一次性，3 个云账号）
 
 ### 2.1 DeepSeek API Key（**必需，主 LLM**）
 
@@ -51,19 +52,39 @@ Windows 用户推荐 **Git Bash**（Git 自带）或 **PowerShell 7+**，不要�
 4. 控制台 → API Keys → 创建 → 复制 `sk-xxxxx...`
 5. **存好这个 key，下面要写进 `.env` 文件**
 
-**为什么选 DeepSeek**：国产、便宜、OpenAI 兼容接口、支持中文好。
+**成本**：`deepseek-chat` 输入 ¥0.5/M token、输出 ¥1.5/M token，日常对话一天几分钱。
 
-### 2.2 HuggingFace（**可选**，加速模型下载）
+---
 
-中国大陆环境下从 huggingface.co 直连慢，配镜像 `https://hf-mirror.com`：
-- 在 `.env` 里加 `HF_ENDPOINT=https://hf-mirror.com`，或
-- 设系统环境变量 `HF_ENDPOINT`
+### 2.2 SiliconFlow API Key（**必需，Embedding**）
 
-不配也能跑，就是首次下 embedding 模型（约 100MB）会慢。
+1. 打开 https://cloud.siliconflow.cn/
+2. 注册账号（手机号 / 邮箱）
+3. 账户管理 → API 密钥 → 新建 → 复制 `sk-xxxxx...`
+4. 模型市场搜 `BAAI/bge-large-zh-v1.5` 确认可用（应该免费）
 
-### 2.3 不需要 OpenAI Key
+**成本**：BGE embedding 模型免费调用，有 RPM 限制但小规模够用。
 
-embedding 用本地 HuggingFace 模型，整个项目只调 DeepSeek API。
+---
+
+### 2.3 Qdrant Cloud Cluster（**必需，向量库**）
+
+1. 打开 https://cloud.qdrant.io/
+2. 注册账号
+3. **重要：选 Region**
+   - 国内访问选 `ap-southeast-1` (Singapore)、`ap-northeast-1` (Tokyo)、`australia-southeast1` (Sydney)
+   - **千万别选南美 / 非洲**，跨大洲 SSL 经常断
+4. 创建 Free Tier 集群（1GB 免费 = 约 100 万 chunk，够个人用）
+5. 创建时弹窗给你的 **API Key 只显示一次**，立刻保存
+6. Dashboard 复制 **Cluster URL**，形如 `https://xxx.region.aws.cloud.qdrant.io`
+
+**成本**：免费 1GB。超出按使用量计费。
+
+---
+
+### 2.4 不需要 OpenAI Key / 不需要 HuggingFace
+
+embedding 走 SiliconFlow，**不下载任何本地模型**。
 
 ---
 
@@ -74,12 +95,12 @@ mkdir -p E:/01_Dev_Projects/Vibe_Coding
 cd E:/01_Dev_Projects/Vibe_Coding
 ```
 
-两个项目并列存放：
+两个项目嵌套存放（**后端在前端目录下**，这是当前项目的实际结构）：
 
 ```
-E:/01_Dev_Projects/Vibe_Coding/
-├── RAG-AIAgent/    # 后端
-└── notes-app/      # 前端
+E:/01_Dev_Projects/Vibe_Coding/notes-app/
+├── (Vue + Electron 前端，本目录)
+└── RAG-AIAgent/    # ← Python 后端，作为子目录
 ```
 
 ---
@@ -89,46 +110,37 @@ E:/01_Dev_Projects/Vibe_Coding/
 ### 4.1 建项目骨架
 
 ```bash
-mkdir RAG-AIAgent && cd RAG-AIAgent
-mkdir -p src data/notes
+cd notes-app
+mkdir -p RAG-AIAgent/src RAG-AIAgent/data/notes
+cd RAG-AIAgent
 ```
 
 ### 4.2 装 Python 依赖
 
 新建 `requirements.txt`：
 
-```
-# LangChain / LangGraph 核心
-langchain>=0.3.0
-langchain-core>=0.3.0
-langchain-openai>=0.2.0
-langchain-community>=0.3.0
-langchain-huggingface>=0.1.0
-langchain-chroma>=0.1.4
-langgraph>=0.2.40
-langgraph-checkpoint-sqlite>=2.0.0
+```txt
+# LLM + Agent
+openai>=1.0.0,<2.0.0
+langchain>=1.0.0,<2.0.0
+langchain-openai>=0.2.0,<1.0.0
+langchain-core>=0.3.0,<1.0.0
+langchain-text-splitters>=0.3.0,<1.0.0
 
-# 向量库 / 检索 / 重排
-chromadb>=0.5.0
-sentence-transformers>=3.0.0
-rank-bm25>=0.2.2
+# Vector DB
+qdrant-client>=1.10.0,<2.0.0
 
-# Embedding / Reranker 后端
-torch>=2.1.0
-transformers>=4.40.0
-huggingface-hub>=0.23.2,<1.0
+# Backend
+fastapi>=0.110.0,<1.0.0
+uvicorn[standard]>=0.27.0,<1.0.0
+python-multipart>=0.0.9,<1.0.0
+sse-starlette>=2.0.0,<3.0.0
 
-# Web 接口
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-sse-starlette>=2.1.0
+# Document ingestion
+pypdf>=4.0.0,<5.0.0
 
-# 文档解析
-pypdf>=4.0.0
-
-# 工具
-pydantic>=2.0.0
-python-dotenv>=1.0.0
+# Utilities
+python-dotenv>=1.0.0,<2.0.0
 ```
 
 执行：
@@ -137,87 +149,100 @@ python-dotenv>=1.0.0
 pip install -r requirements.txt
 ```
 
-**注意**：transformers 和 huggingface-hub 有版本耦合，按上面这套 `<1.0` 约束装，否则会冲突。
+**与旧设计的差异**：**不需要** `chromadb` / `sentence-transformers` / `torch` / `transformers` / `langchain-huggingface` —— 全部走云端调用，依赖大幅瘦身。
 
 ### 4.3 配置环境变量
 
-新建 `.env`（不要提交到 git）：
+新建 `.env`（**不要提交到 git**）：
 
 ```bash
 # DeepSeek
-DEEPSEEK_API_KEY=sk-你的key
+DEEPSEEK_API_KEY=sk-你的deepseek-key
 DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
-DEEPSEEK_CHAT_MODEL=deepseek-chat
-DEEPSEEK_REASONER_MODEL=deepseek-reasoner
+DEEPSEEK_MODEL=deepseek-chat
 
-# 本地中文 Embedding / Reranker
-EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
-RERANKER_MODEL=BAAI/bge-reranker-base
+# SiliconFlow（Embedding）
+SILICONFLOW_API_KEY=sk-你的siliconflow-key
+SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
+EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
+EMBEDDING_DIM=1024
 
-# 持久化路径
-CHROMA_PERSIST_DIR=./chroma_db
-SQLITE_CHECKPOINT_PATH=./checkpoints.sqlite
-DATA_DIR=./data
+# Qdrant Cloud
+QDRANT_URL=https://你的集群.region.aws.cloud.qdrant.io
+QDRANT_API_KEY=你的qdrant-key
+QDRANT_COLLECTION_PREFIX=rag_kb_
 
-# 检索参数
-RECALL_TOP_K=10
-RERANK_TOP_K=4
-
-# API
-API_HOST=0.0.0.0
-API_PORT=8000
-
-# 可选：HF 镜像
-# HF_ENDPOINT=https://hf-mirror.com
+# RAG 参数（可选覆盖默认）
+CHUNK_SIZE=500
+CHUNK_OVERLAP=80
+TOP_K=6
 ```
+
+`.env.example` 同步用占位符版本（这个要 commit）。
 
 ### 4.4 写代码文件
 
-按 [TECH_OVERVIEW.md](TECH_OVERVIEW.md) 的结构写 `src/` 下的模块：
+按 [TECH_OVERVIEW.md](TECH_OVERVIEW.md) 第一章的目录结构写 `src/` 下的模块：
 
 | 文件 | 职责 |
 |---|---|
 | `src/__init__.py` | 空文件，标记 package |
-| `src/config.py` | 加载 .env、DeepSeek LLM 工厂、Embedding 工厂 |
-| `src/state.py` | `AgentState` / `AgentResponse` / `RouteDecision` 等 Pydantic schema |
-| `src/kb.py` | 知识库注册表、`kb_registry.json` 读写 |
-| `src/retrieval.py` | Chroma + BM25 混合检索 + Reranker |
-| `src/entries.py` | 错题 upsert/delete 同步逻辑 |
-| `src/nodes.py` | LangGraph 节点函数（路由 / 改写 / 检索 / 评分 / 生成） |
-| `src/graph.py` | StateGraph 装配 + SqliteSaver |
-| `src/ingest.py` | 命令行入库脚本 |
-| `src/api.py` | FastAPI 路由：`/chat /chat/stream /chat/entry /entries/* /kbs /ingest` |
+| `src/config.py` | 加载 `.env`、定义集合命名规则 `rag_kb_<kb_id>` |
+| `src/llm.py` | `build_llm()` DeepSeek 工厂、`EmbeddingService` SiliconFlow 客户端 |
+| `src/vector_store.py` | `VectorStore` 单例 + `@_retry()` 装饰器，每 KB 一个 Qdrant collection |
+| `src/prompt.py` | 三套 system prompt：`AGENT_SYSTEM_PROMPT` / `ENTRY_LOCKED_SYSTEM_PROMPT` / `DIRECT_CHAT_SYSTEM_PROMPT` |
+| `src/kb.py` | `KBRegistry` JSON 持久化注册表 + 默认 `notes` KB |
+| `src/entries.py` | `EntrySync` 把错题切 3 chunks（题目 / 正确答案 / 错误答案）+ 跨 KB upsert/delete |
+| `src/ingest.py` | `Ingester` 扫 `data/<kb_id>/` 入库 PDF/TXT/MD |
+| `src/agent.py` | `KbAgent`（`create_agent` + `query_knowledge_base` 工具）+ `EntryAgent`（锁定模式） |
+| `src/api.py` | FastAPI 10 个端点 + SSE 响应器 `_sse_dispatch` |
 
 代码逻辑直接看 `TECH_OVERVIEW.md` 第三章「核心算法」和第五章「API 速查」。
 
 ### 4.5 数据准备
 
 ```bash
-mkdir data/notes
-# 把你要 RAG 检索的 PDF / MD 拷进 data/notes/
+# 默认错题库目录已经存在
+ls data/notes
+# 如果要加额外文档，扔进这里
+# cp my-pdf.pdf data/notes/
 ```
 
-### 4.6 首次启动 + 入库
+### 4.6 首次启动 + 验证
 
 ```bash
-# 文档入库（首次会下载 bge 模型，约 100MB）
-python -m src.ingest --kb notes --reset
+# 验证配置 + Qdrant 连通
+python -c "from src.config import validate_config; from src.vector_store import VectorStore; validate_config(); print(VectorStore().collection_stats('notes'))"
 
 # 起服务
-uvicorn src.api:app --host 0.0.0.0 --port 8000
+python -m uvicorn src.api:app --host 0.0.0.0 --port 8000
 ```
 
-打开 http://localhost:8000/docs 看 Swagger，能看到 `/chat`、`/kbs` 这些端点说明 OK。
+打开 http://localhost:8000/docs 看 Swagger，能看到 `/chat/stream`、`/kbs` 这些端点说明 OK。
+
+测端点：
+
+```bash
+curl http://localhost:8000/health
+# {"status":"ok","kbs":["notes"]}
+
+curl http://localhost:8000/kbs
+# [{"id":"notes","name":"错题库","is_default":true,...}]
+```
 
 ### 4.7 常见坑
 
 | 现象 | 原因 | 解决 |
 |---|---|---|
-| `huggingface-hub>=0.23.2,<1.0 required` | 版本冲突 | `pip install "huggingface-hub>=0.23.2,<1.0"` |
-| `Connection broken: IncompleteRead` | HF 模型下载断 | 配 `HF_ENDPOINT=https://hf-mirror.com` 重试 |
-| 终端中文乱码 / UnicodeEncodeError | Windows GBK 终端不认 emoji | print 不用 emoji |
-| `Method Not Allowed` | 浏览器直接 GET `/chat` | `/chat` 是 POST，看 `/docs` 测试 |
-| 答案是 "Connection error" 字符串 | DeepSeek 瞬时网络抖动被 SDK 吞 | 已内置 3 次指数退避重试 |
+| `Missing env vars: ...` | `.env` 没填全 | 检查 4 个必填项（DEEPSEEK / SILICONFLOW / QDRANT_URL / QDRANT_API_KEY） |
+| `[SSL: UNEXPECTED_EOF_WHILE_READING]` | Qdrant 集群在跨大洲区域 | 重建集群到亚太区（Singapore / Tokyo / Sydney） |
+| `AgentExecutor not found` | LangChain 0.x | `pip install -U "langchain>=1.0"`，改用 `create_agent` |
+| `Address already in use ('0.0.0.0', 8000)` | 旧 uvicorn 没关 | `netstat -ano | grep :8000` → `taskkill /PID <pid> /F` |
+| Windows 终端 emoji `UnicodeEncodeError` | GBK 不认 emoji | `sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')` |
+| `Messages with role 'tool' must be a response to...` | `chat_history` 缺中间 tool 消息 | 流式生成后用 `invoke()` 拿规范化历史 |
+| Qdrant 集合维度不对 | 换过 EMBEDDING_MODEL | `client.delete_collection('rag_kb_notes')` 重新跑 |
+| `Method Not Allowed` | 浏览器直接 GET `/chat/stream` | `/chat/*` 是 POST，看 `/docs` 测试 |
+| 答案是 "Connection error" 字符串 | DeepSeek 瞬时网络抖动 | 已内置 max_retries=2，再不行手动加重试 |
 
 ---
 
@@ -231,6 +256,8 @@ npm create vite@latest notes-app -- --template vue-ts
 cd notes-app
 npm install
 ```
+
+如果用现有项目，直接 `npm install` 在已有目录跑。
 
 ### 5.2 加 Electron + Tailwind + 工具链
 
@@ -256,11 +283,11 @@ npx husky init
 | `tailwind.config.js` | Tailwind 配置 | `content: ['./index.html', './src/**/*.{vue,ts}']`，`darkMode: 'class'`，自定义 `accent` 色 |
 | `postcss.config.js` | PostCSS | 引入 tailwindcss + autoprefixer |
 | `tsconfig.json` / `tsconfig.app.json` | TS 配置 | `paths: { "@/*": ["./src/*"] }` |
-| `.eslintrc` / `eslint.config.js` | ESLint | Vue + TS 规则 |
+| `eslint.config.js` | ESLint | Vue + TS 规则 |
 | `.prettierrc` | Prettier | 项目格式风格 |
 | `.husky/pre-commit` | Git hook | 跑 `npm run lint` 阻止脏代码进库 |
-| `electron/main.ts` | Electron 主进程 | 创建 BrowserWindow、加载 Vite dev URL 或打包后的 dist |
-| `electron/preload.ts` | Electron preload | 暴露安全 API 给 renderer |
+| `electron/main.cjs` | Electron 主进程 | 创建 BrowserWindow、加载 Vite dev URL 或打包后的 dist |
+| `electron/preload.cjs` | Electron preload | 暴露安全 API 给 renderer |
 
 ### 5.4 src 目录组织
 
@@ -269,7 +296,7 @@ src/
 ├── App.vue                  # 根组件
 ├── main.ts                  # 入口
 ├── style.css                # Tailwind @tailwind 指令
-├── components/              # 所有 .vue 组件（见 TECH_OVERVIEW）
+├── components/              # 所有 .vue 组件
 ├── composables/             # 组合式逻辑（useEntries / useAiChat / ...）
 ├── services/db.ts           # IndexedDB 封装
 ├── types/index.ts           # NoteEntry / AiSkill 等类型
@@ -282,7 +309,7 @@ src/
 2. **`useNotebooks`** — 笔记本切换
 3. **`useReview`** — SRS 间隔重复
 4. **`useDarkMode`** — 暗黑模式切换
-5. **`useAiChat`** — 调 `/chat/stream`，手写 SSE 解析（**关键**：分隔符要同时支持 `\r\n\r\n` 和 `\n\n`）
+5. **`useAiChat`** — 调 `/chat/stream` 或 `/chat/entry`，手写 SSE 解析（**关键**：分隔符要同时支持 `\r\n\r\n` 和 `\n\n`）
 6. **`useAiSkills`** — Skill 系统，localStorage 持久化
 7. **`useKnowledgeBases`** — KB 列表，调 `/kbs` 接口
 8. **`useRagSync`** — 错题保存时静默同步 RAG，失败不阻塞
@@ -293,18 +320,21 @@ src/
 
 ```bash
 npm run dev
+# 或
+npx vite
 ```
 
-打开 http://localhost:5173/。
+打开 http://localhost:5173/（5173 被占用会自动跳 5174）。
 
 ### 5.7 常见坑
 
 | 现象 | 原因 | 解决 |
 |---|---|---|
-| 5173 / 5174 被占 | 旧进程没关 | `netstat -ano | grep :5173` 找 PID，PowerShell `Stop-Process -Id N -Force` |
-| CORS 错 | 后端没装 CORSMiddleware | api.py 加 `app.add_middleware(CORSMiddleware, allow_origins=['*'], ...)` |
-| 侧栏聊天显示空 | SSE 解析卡 `\r\n\r\n` | 看 `useAiChat.ts` 的 `findSep` 函数 |
-| 侧栏聊天显示 "Connection error" | 后端 DeepSeek 抖动 | 后端 nodes.py 加 `_invoke_with_retry` |
+| `5173 / 5174 被占` | 旧 vite 没关 | `netstat -ano | grep :5173` 找 PID，`taskkill /PID N /F` |
+| CORS 错 | 后端没装 CORSMiddleware | `api.py` 加 `app.add_middleware(CORSMiddleware, allow_origins=['*'], ...)` |
+| AI 侧栏聊天显示 `[出错] HTTP 404` | 后端没起 / 端口错 | 检查 `uvicorn` 在 8000 跑、`useAiChat.ts` 的 `DEFAULT_BASE_URL` |
+| AI 侧栏一直"思考中"不停 | SSE 解析卡 `\r\n\r\n` | 看 `useAiChat.ts` 的 `findSep` 函数 |
+| AI 侧栏显示 "Connection error" | 后端 DeepSeek 抖动 | 重试 max_retries=2 起效，或前端重发 |
 | Vue 响应式不更新 | 闭包持有原始对象 | push 进数组后用 `arr[arr.length-1]` 取代理引用 |
 | TS 报 `Property 'at' does not exist` | tsconfig 没开 ES2022 | 改用 `arr[arr.length-1]` 替代 `arr.at(-1)` |
 | `Property 'confirm' does not exist` | template 里直接用 `confirm()` | setup 里包一层 `function confirmAsk(msg) { return window.confirm(msg) }` |
@@ -317,8 +347,8 @@ npm run dev
 
 ```bash
 # Terminal 1：后端
-cd E:/01_Dev_Projects/Vibe_Coding/RAG-AIAgent
-uvicorn src.api:app --host 0.0.0.0 --port 8000
+cd E:/01_Dev_Projects/Vibe_Coding/notes-app/RAG-AIAgent
+python -m uvicorn src.api:app --host 0.0.0.0 --port 8000
 
 # Terminal 2：前端
 cd E:/01_Dev_Projects/Vibe_Coding/notes-app
@@ -327,19 +357,20 @@ npm run dev
 
 ### 6.2 验证清单
 
-1. `curl http://localhost:8000/health` → `{"status":"ok"}`
+1. `curl http://localhost:8000/health` → `{"status":"ok","kbs":["notes"]}`
 2. `curl http://localhost:8000/kbs` → 返回默认 `notes` 库
 3. 浏览器 http://localhost:5173/ → 能看到笔记本界面
 4. 新建一条错题 → 保存 → 后端控制台看到 `POST /entries/upsert 200`
 5. 打开任意错题 → 右侧 AI 侧栏顶部显示「当前错题」蓝色 chip
-6. 输入"这题怎么做"→ 流式输出能看到节点进度 → 最终给出答案 + 置信度
+6. 输入"这题怎么做"→ 流式输出能看到节点进度（load_entry → generate_answer）→ 最终给出答案 + 置信度
+7. 全库模式问"我有哪些错题"→ 进度条出现 `route_question → retrieve → generate_answer`，答案引用错题标题
 
 ### 6.3 验证多知识库
 
 1. 设置面板 → 知识库 → 新建 ID=`test`、名称=`测试库`
 2. 点这一行的「路径」按钮 → 剪贴板得到 `E:\...\RAG-AIAgent\data\test\` 路径
 3. 文件资源管理器粘贴打开 → 拷个 PDF 进去
-4. 设置面板 → 点这一行「重建」按钮
+4. 设置面板 → 点这一行「重建」按钮（调 `POST /ingest {kb_id:'test', reset:true}`）
 5. 错题编辑页顶部 KB 下拉切到「测试库」→ 保存
 6. AI 侧栏（全库模式）顶部 KB 选「测试库」→ 提问命中新 PDF
 
@@ -358,10 +389,10 @@ pyinstaller --onefile --add-data ".env;." -n rag-server src/api.py
 
 但有几个坑：
 - LangChain 动态 import 多，要加 `--collect-all langchain`
-- HuggingFace 模型路径要重定向
-- Chroma 含 SQLite 依赖
+- Qdrant client 含 protobuf 编译依赖
+- `.env` 路径要硬编码或运行时读环境变量
 
-**推荐做法**：写一个 `start.bat` / `start.sh` 启动脚本，配 README 让用户装 Python 再跑。
+**推荐做法**：写一个 `start.bat` / `start.sh` 启动脚本，配 README 让用户装 Python + 拷 `.env` 再跑。
 
 ### 7.2 前端打包（Electron）
 
@@ -396,10 +427,10 @@ npm run build
 
 **默认 Electron 应用打开后**会调 `http://localhost:8000` —— 用户必须先跑后端。
 
-更友好的做法：让 Electron 主进程**自动起 Python 后端子进程**。在 `electron/main.ts`：
+更友好的做法：让 Electron 主进程**自动起 Python 后端子进程**。在 `electron/main.cjs`：
 
-```ts
-import { spawn } from 'child_process'
+```js
+const { spawn } = require('child_process')
 const py = spawn('python', ['-m', 'uvicorn', 'src.api:app'], { cwd: '...' })
 app.on('quit', () => py.kill())
 ```
@@ -412,37 +443,18 @@ app.on('quit', () => py.kill())
 
 ### 8.1 两个仓库还是一个 monorepo？
 
-**推荐**：两个独立仓库
+**推荐**：一个 monorepo（后端就在前端子目录），方便联调和文档同步。
 
 ```bash
-# 后端
-cd RAG-AIAgent
-git init
-git add .
-git commit -m "init"
-
-# 前端
-cd ../notes-app
+cd notes-app
 git init
 git add .
 git commit -m "init"
 ```
 
-`.gitignore` 必须包含：
+### 8.2 `.gitignore` 必须包含
 
-**RAG-AIAgent/.gitignore**
-```
-.env
-__pycache__/
-*.pyc
-chroma_db/
-checkpoints.sqlite
-data/
-kb_registry.json
-.venv/
-```
-
-**notes-app/.gitignore**
+**根目录 .gitignore**：
 ```
 node_modules/
 dist/
@@ -450,18 +462,31 @@ dist-electron/
 .vite/
 *.tsbuildinfo
 .env.local
+
+# 后端
+RAG-AIAgent/.env
+RAG-AIAgent/__pycache__/
+RAG-AIAgent/**/*.pyc
+RAG-AIAgent/.venv/
+RAG-AIAgent/data/kb_registry.json
+RAG-AIAgent/data/*/
+!RAG-AIAgent/data/.gitkeep
 ```
 
-### 8.2 推 GitHub
+### 8.3 推 GitHub
 
 ```bash
-gh repo create your-name/rag-aiagent --private --source=. --push
 gh repo create your-name/notes-app --private --source=. --push
 ```
 
-### 8.3 关键：永远不要把 `.env` 推上去
+### 8.4 关键：永远不要把 `.env` 推上去
 
-`.env` 里有 DeepSeek API key —— 推上 GitHub 等于送钱。先确认 `.gitignore` 生效再 `git add`。
+```bash
+# 推之前扫一遍
+grep -rE "sk-[a-zA-Z0-9]{30,}" --include="*.py" --include="*.ts" --include="*.vue" --include="*.md" .
+```
+
+`.env` 里有 DeepSeek + SiliconFlow + Qdrant 三套 key —— 推上 GitHub 等于送钱 + 送数据。先确认 `.gitignore` 生效再 `git add`。
 
 ---
 
@@ -481,8 +506,8 @@ gh repo create your-name/notes-app --private --source=. --push
 
 ```bash
 # 1. 起后端
-cd E:/01_Dev_Projects/Vibe_Coding/RAG-AIAgent
-uvicorn src.api:app --host 0.0.0.0 --port 8000
+cd E:/01_Dev_Projects/Vibe_Coding/notes-app/RAG-AIAgent
+python -m uvicorn src.api:app --host 0.0.0.0 --port 8000
 # 看到 "Uvicorn running on http://0.0.0.0:8000" 就 OK
 
 # 2. 起前端（另开终端）
@@ -493,7 +518,11 @@ npm run dev
 # 3. 浏览器打开 http://localhost:5173/
 ```
 
-完事关掉两个终端就行（Ctrl + C）。错题数据在浏览器 IndexedDB 里，重启不会丢；RAG 索引在 `RAG-AIAgent/chroma_db/`，也不会丢。
+完事关掉两个终端就行（Ctrl + C）。
+
+- 错题数据在浏览器 IndexedDB 里，重启不会丢
+- RAG 索引在 **Qdrant Cloud**，重启不会丢，跨机器也不会丢（同一个 cluster）
+- 会话历史在后端内存里，**后端重启就丢**（接 Redis 后可持久化，见 TECH_OVERVIEW 7.7）
 
 ---
 
@@ -501,19 +530,21 @@ npm run dev
 
 | 场景 | 工具 |
 |---|---|
-| 看 RAG 内部决策（路由 / 改写 / 评分） | 后端终端有 `--- [Node] xxx ---` 打印 |
-| 看前端 SSE 数据 | F12 → Network → 找 `chat/stream` → EventStream tab |
+| 看 RAG 内部决策（agent 调没调工具） | 后端终端有 SSE node 事件日志；浏览器 F12 Network 看 `chat/stream` EventStream |
+| 看前端 SSE 数据 | F12 → Network → 找 `chat/stream` 或 `chat/entry` → EventStream tab |
 | 看 IndexedDB | F12 → Application → IndexedDB |
 | 看 localStorage（skill / KB 选择） | F12 → Application → Local Storage |
 | Vue 组件状态 | 装 Vue Devtools 浏览器扩展 |
 | Python 类型 / 报错堆栈 | `uvicorn ... --log-level debug` |
 | TS 类型检查 | `npx vue-tsc --noEmit -p tsconfig.app.json` |
+| LangSmith 全链路 trace（需配置） | 网页 https://smith.langchain.com 看每次调用 |
+| Qdrant 数据查看 | Qdrant Cloud Dashboard → Collections → Browse |
 
 ---
 
 ## 十二、再要扩展看哪里
 
-`TECH_OVERVIEW.md` 第七章「扩展实施指南」—— 11 个常见扩展（OCR / LangSmith / Prompt Caching / 多模态 / ...），每个都标了改哪些文件、工程量、关键代码点。
+`TECH_OVERVIEW.md` 第七章「扩展实施指南」—— 10 个常见扩展（LangSmith / 自建 Qdrant / Reranker / OCR / Redis Session / 多模态 / ...），每个都标了改哪些文件、工程量、关键代码点。
 
 ---
 
@@ -522,17 +553,21 @@ npm run dev
 如果以后想在别的电脑搭一份：
 
 1. 装好 Git / Node 20+ / Python 3.11+
-2. `git clone` 两个仓库
+2. `git clone` 项目（monorepo）
 3. **RAG-AIAgent**：
-   - 拷一份 `.env`（含你的 DeepSeek key）
+   - 申请 DeepSeek / SiliconFlow / Qdrant 三个云账号（已有 key 直接复用）
+   - 拷一份 `.env`
    - `pip install -r requirements.txt`
-   - 把要 RAG 的 PDF 放到 `data/notes/`
-   - `python -m src.ingest --kb notes --reset`
-   - `uvicorn src.api:app --host 0.0.0.0 --port 8000`
+   - `python -m uvicorn src.api:app --host 0.0.0.0 --port 8000`
 4. **notes-app**：
    - `npm ci`
    - `npm run dev`
 5. 浏览器开 http://localhost:5173/
 6. 如果有 skill 备份，设置面板 → AI 指令库 → 导入 JSON
+
+**注意**：Qdrant 数据是云上的，新机器连同一个 cluster 就能看到原来的错题索引。如果想从头开始：
+```bash
+curl -X DELETE -H "api-key: $QDRANT_API_KEY" $QDRANT_URL/collections/rag_kb_notes
+```
 
 完事。

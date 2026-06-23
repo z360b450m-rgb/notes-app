@@ -18,6 +18,19 @@ release/
 .env
 .env.local
 .env.*.local
+RAG-AIAgent/.env
+
+# --- Python 后端 ---
+RAG-AIAgent/__pycache__/
+RAG-AIAgent/**/__pycache__/
+RAG-AIAgent/**/*.pyc
+RAG-AIAgent/.venv/
+RAG-AIAgent/venv/
+
+# --- 后端运行时数据（含用户文档 + KB 元数据，不入库） ---
+RAG-AIAgent/data/kb_registry.json
+RAG-AIAgent/data/*/
+!RAG-AIAgent/data/.gitkeep
 
 # --- 编辑器与系统文件 ---
 .vscode/*
