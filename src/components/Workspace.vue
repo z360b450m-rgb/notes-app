@@ -131,6 +131,12 @@ const emit = defineEmits<{
   'add-subject': [name: string]
   'add-tag': [name: string]
   'add-source': [name: string]
+  'rename-subject': [oldName: string, newName: string]
+  'delete-subject': [name: string]
+  'rename-tag': [oldName: string, newName: string]
+  'delete-tag': [name: string]
+  'rename-source': [oldName: string, newName: string]
+  'delete-source': [name: string]
   'batch-tag': [tags: string[]]
   'batch-export': []
 
@@ -224,6 +230,12 @@ function onWheel(e: WheelEvent) {
       @add-subject="(name) => emit('add-subject', name)"
       @add-tag="(name) => emit('add-tag', name)"
       @add-source="(name) => emit('add-source', name)"
+      @rename-subject="(oldName, newName) => emit('rename-subject', oldName, newName)"
+      @delete-subject="(name) => emit('delete-subject', name)"
+      @rename-tag="(oldName, newName) => emit('rename-tag', oldName, newName)"
+      @delete-tag="(name) => emit('delete-tag', name)"
+      @rename-source="(oldName, newName) => emit('rename-source', oldName, newName)"
+      @delete-source="(name) => emit('delete-source', name)"
       @batch-delete="emit('batch-delete')"
       @batch-tag="(tags) => emit('batch-tag', tags)"
       @batch-export="emit('batch-export')"

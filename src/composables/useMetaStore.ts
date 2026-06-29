@@ -53,10 +53,13 @@ export interface MetaStore {
   allSources: ComputedRef<string[]>
   addSubject: (name: string) => void
   removeSubject: (name: string) => void
+  renameSubject: (oldName: string, newName: string) => void
   addTag: (name: string) => void
   removeTag: (name: string) => void
+  renameTag: (oldName: string, newName: string) => void
   addSource: (name: string) => void
   removeSource: (name: string) => void
+  renameSource: (oldName: string, newName: string) => void
 }
 
 export function useMetaStore(entries: Ref<NoteEntry[]>): MetaStore {
@@ -138,15 +141,67 @@ export function useMetaStore(entries: Ref<NoteEntry[]>): MetaStore {
     persist()
   }
 
+  function renameSubject(oldName: string, newName: string) {
+    const trimmed = newName.trim()
+    if (!trimmed || trimmed === oldName) return
+    const subjects = extrasStore.value.subjects
+    const idx = subjects.indexOf(oldName)
+    if (idx === -1) return
+    const replaced = [...subjects]
+    if (subjects.includes(trimmed)) {
+      // Merge: remove old name, new name already exists
+      replaced.splice(idx, 1)
+    } else {
+      replaced[idx] = trimmed
+    }
+    extrasStore.value = { ...extrasStore.value, subjects: replaced }
+    persist()
+  }
+
+  function renameTag(oldName: string, newName: string) {
+    const trimmed = newName.trim()
+    if (!trimmed || trimmed === oldName) return
+    const tags = extrasStore.value.tags
+    const idx = tags.indexOf(oldName)
+    if (idx === -1) return
+    const replaced = [...tags]
+    if (tags.includes(trimmed)) {
+      replaced.splice(idx, 1)
+    } else {
+      replaced[idx] = trimmed
+    }
+    extrasStore.value = { ...extrasStore.value, tags: replaced }
+    persist()
+  }
+
+  function renameSource(oldName: string, newName: string) {
+    const trimmed = newName.trim()
+    if (!trimmed || trimmed === oldName) return
+    const sources = extrasStore.value.sources
+    const idx = sources.indexOf(oldName)
+    if (idx === -1) return
+    const replaced = [...sources]
+    if (sources.includes(trimmed)) {
+      replaced.splice(idx, 1)
+    } else {
+      replaced[idx] = trimmed
+    }
+    extrasStore.value = { ...extrasStore.value, sources: replaced }
+    persist()
+  }
+
   return {
     allSubjects,
     allTags,
     allSources,
     addSubject,
     removeSubject,
+    renameSubject,
     addTag,
     removeTag,
+    renameTag,
     addSource,
     removeSource,
+    renameSource,
   }
 }

@@ -142,6 +142,78 @@ export function useEntries() {
     deselectAll()
   }
 
+  // Rename subject across all entries
+  async function renameSubjectInEntries(oldName: string, newName: string) {
+    const now = Date.now()
+    for (const entry of entries.value) {
+      if (entry.subject === oldName) {
+        entry.subject = newName
+        entry.updatedAt = now
+        await db.put(toPlain(entry))
+      }
+    }
+  }
+
+  // Rename tag across all entries
+  async function renameTagInEntries(oldName: string, newName: string) {
+    const now = Date.now()
+    for (const entry of entries.value) {
+      if (entry.tags && entry.tags.includes(oldName)) {
+        entry.tags = entry.tags.map((t) => (t === oldName ? newName : t))
+        entry.updatedAt = now
+        await db.put(toPlain(entry))
+      }
+    }
+  }
+
+  // Rename source across all entries
+  async function renameSourceInEntries(oldName: string, newName: string) {
+    const now = Date.now()
+    for (const entry of entries.value) {
+      if (entry.source === oldName) {
+        entry.source = newName
+        entry.updatedAt = now
+        await db.put(toPlain(entry))
+      }
+    }
+  }
+
+  // Remove subject from all entries that use it
+  async function removeSubjectFromEntries(name: string) {
+    const now = Date.now()
+    for (const entry of entries.value) {
+      if (entry.subject === name) {
+        entry.subject = ''
+        entry.updatedAt = now
+        await db.put(toPlain(entry))
+      }
+    }
+  }
+
+  // Remove tag from all entries that use it
+  async function removeTagFromEntries(name: string) {
+    const now = Date.now()
+    for (const entry of entries.value) {
+      if (entry.tags && entry.tags.includes(name)) {
+        entry.tags = entry.tags.filter((t) => t !== name)
+        entry.updatedAt = now
+        await db.put(toPlain(entry))
+      }
+    }
+  }
+
+  // Remove source from all entries that use it
+  async function removeSourceFromEntries(name: string) {
+    const now = Date.now()
+    for (const entry of entries.value) {
+      if (entry.source === name) {
+        entry.source = ''
+        entry.updatedAt = now
+        await db.put(toPlain(entry))
+      }
+    }
+  }
+
   // Batch export
   function batchExport(ids: string[]) {
     const selected = entries.value.filter((e) => ids.includes(e.id))
@@ -437,6 +509,13 @@ export function useEntries() {
     batchDelete,
     batchTag,
     batchExport,
+    // entity rename/delete
+    renameSubjectInEntries,
+    renameTagInEntries,
+    renameSourceInEntries,
+    removeSubjectFromEntries,
+    removeTagFromEntries,
+    removeSourceFromEntries,
     // utility exports for components
     stripMd,
     isPlaceholderTitle,

@@ -60,6 +60,13 @@ const {
   batchTag,
   batchExport,
   notebookEntries,
+  // entity rename/delete
+  renameSubjectInEntries,
+  renameTagInEntries,
+  renameSourceInEntries,
+  removeSubjectFromEntries,
+  removeTagFromEntries,
+  removeSourceFromEntries,
 } = useEntries()
 
 const {
@@ -94,8 +101,20 @@ const {
   setSort,
 } = useFilter(notebookEntries)
 
-const { allSubjects, allTags, allSources, addSubject, addTag, addSource } =
-  useMetaStore(notebookEntries)
+const {
+  allSubjects,
+  allTags,
+  allSources,
+  addSubject,
+  removeSubject,
+  renameSubject,
+  addTag,
+  removeTag,
+  renameTag,
+  addSource,
+  removeSource,
+  renameSource,
+} = useMetaStore(notebookEntries)
 
 const {
   mode,
@@ -474,6 +493,42 @@ function handleAddSource(name: string) {
   addSource(name)
 }
 
+async function handleRenameSubject(oldName: string, newName: string) {
+  renameSubject(oldName, newName)
+  await renameSubjectInEntries(oldName, newName)
+  showToast(`学科已重命名为 "${newName}"`)
+}
+
+async function handleDeleteSubject(name: string) {
+  removeSubject(name)
+  await removeSubjectFromEntries(name)
+  showToast(`学科 "${name}" 已删除`)
+}
+
+async function handleRenameTag(oldName: string, newName: string) {
+  renameTag(oldName, newName)
+  await renameTagInEntries(oldName, newName)
+  showToast(`标签已重命名为 "${newName}"`)
+}
+
+async function handleDeleteTag(name: string) {
+  removeTag(name)
+  await removeTagFromEntries(name)
+  showToast(`标签 "${name}" 已删除`)
+}
+
+async function handleRenameSource(oldName: string, newName: string) {
+  renameSource(oldName, newName)
+  await renameSourceInEntries(oldName, newName)
+  showToast(`来源已重命名为 "${newName}"`)
+}
+
+async function handleDeleteSource(name: string) {
+  removeSource(name)
+  await removeSourceFromEntries(name)
+  showToast(`来源 "${name}" 已删除`)
+}
+
 function handleBatchExport() {
   batchExport(Array.from(selectedIds.value))
 }
@@ -719,6 +774,12 @@ watch(activeId, (_newId) => {
       @add-subject="handleAddSubject"
       @add-tag="handleAddTag"
       @add-source="handleAddSource"
+      @rename-subject="handleRenameSubject"
+      @delete-subject="handleDeleteSubject"
+      @rename-tag="handleRenameTag"
+      @delete-tag="handleDeleteTag"
+      @rename-source="handleRenameSource"
+      @delete-source="handleDeleteSource"
       @batch-tag="handleBatchTag"
       @batch-export="handleBatchExport"
       @export-json="exportData"
