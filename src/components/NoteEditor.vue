@@ -9,14 +9,17 @@ import ScreenshotPicker from './ScreenshotPicker.vue'
 import ImageCropper from './ImageCropper.vue'
 import ImageFilterModal from './ImageFilterModal.vue'
 import AnswerPanel from './AnswerPanel.vue'
-import { useKnowledgeBases } from '@/composables/useKnowledgeBases'
-
-const { kbs, refresh: refreshKbs } = useKnowledgeBases()
-refreshKbs()
+import TagMultiSelect from './TagMultiSelect.vue'
+// import { useKnowledgeBases } from '@/composables/useKnowledgeBases'
+// const { kbs, refresh: refreshKbs } = useKnowledgeBases()
+// refreshKbs()
 
 const props = defineProps<{
   entry: NoteEntry
   answersHidden: boolean
+  allSubjects?: string[]
+  allTags?: string[]
+  allSources?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -24,6 +27,7 @@ const emit = defineEmits<{
   reveal: []
   'blur-save': []
   'mount-canvas': [el: HTMLElement, entryId: string]
+  'add-tag': [name: string]
 }>()
 
 function onBlur() {
@@ -43,25 +47,22 @@ const resizeV = ref<HTMLDivElement | null>(null)
 let suppressInput = false
 
 // Helpers so template @event handlers stay single-statement (Vue compiler no ASI)
-function onSubjectInput(e: Event) {
-  props.entry.subject = (e.target as HTMLInputElement).value
+function onSubjectChange(e: Event) {
+  props.entry.subject = (e.target as HTMLSelectElement).value
   emit('update')
 }
-function onSourceInput(e: Event) {
-  props.entry.source = (e.target as HTMLInputElement).value
+function onSourceChange(e: Event) {
+  props.entry.source = (e.target as HTMLSelectElement).value
   emit('update')
 }
-function onTagsInput(e: Event) {
-  props.entry.tags = (e.target as HTMLInputElement).value
-    .split(',')
-    .map((t: string) => t.trim())
-    .filter(Boolean)
+function onTagsChange(tags: string[]) {
+  props.entry.tags = tags
   emit('update')
 }
-function onKbChange(e: Event) {
-  props.entry.kbId = (e.target as HTMLSelectElement).value
-  emit('update')
-}
+// function onKbChange(e: Event) {
+//   props.entry.kbId = (e.target as HTMLSelectElement).value
+//   emit('update')
+// }
 function onWrongAnswer(val: string) {
   props.entry.wrongAnswer = val
   emit('update')
@@ -380,46 +381,90 @@ onUnmounted(() => {
   window.removeEventListener('mouseup', stopResize)
   answersObserver?.disconnect()
 })
+
+function onQuestionWheel(e: WheelEvent) {
+  const el = e.currentTarget as HTMLElement
+  const atTop = el.scrollTop <= 0
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
+  if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) {
+    e.preventDefault()
+  }
+}
 </script>
 
 <template>
   <!-- @AI-VIEW: DOM 可自由重构。样式仅限 Tailwind CSS 工具类。严禁内联 style 或自定义 CSS。 -->
-  <div class="flex-1 flex flex-col overflow-hidden p-4 gap-3">
+  <div class="flex-1 flex flex-col overflow-hidden overscroll-contain p-4 gap-3">
     <!-- Meta row -->
     <div class="flex items-center gap-2.5 px-1 flex-wrap">
-      <input
-        type="text"
-        class="border border-gray-200 dark:border-[#2e2e2c] bg-gray-50 dark:bg-[#1e1e1c] rounded-lg px-2.5 py-1.5 text-xs outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all w-[100px]"
-        placeholder="学科（如：言语）"
-        :value="entry.subject"
-        @input="onSubjectInput($event)"
-        @blur="onBlur"
-      />
-      <input
-        type="text"
-        class="border border-gray-200 dark:border-[#2e2e2c] bg-gray-50 dark:bg-[#1e1e1c] rounded-lg px-2.5 py-1.5 text-xs outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all w-[120px]"
-        placeholder="来源（如：月考）"
-        :value="entry.source"
-        @input="onSourceInput($event)"
-        @blur="onBlur"
-      />
-      <input
-        type="text"
-        class="flex-1 min-w-[140px] border border-gray-200 dark:border-[#2e2e2c] bg-gray-50 dark:bg-[#1e1e1c] rounded-lg px-2.5 py-1.5 text-xs outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
-        placeholder="标签，逗号分隔"
-        :value="entry.tags.join(', ')"
-        @input="onTagsInput($event)"
-        @blur="onBlur"
-      />
-      <select
-        class="border border-gray-200 dark:border-[#2e2e2c] bg-gray-50 dark:bg-[#1e1e1c] rounded-lg px-2 py-1.5 text-xs outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
-        :value="entry.kbId || 'notes'"
-        title="所属知识库"
-        @change="onKbChange($event)"
-        @blur="onBlur"
-      >
-        <option v-for="k in kbs" :key="k.id" :value="k.id">📚 {{ k.name }}</option>
-      </select>
+      <!-- Subject select -->
+      <div class="relative w-[130px]">
+        <select
+          class="w-full border border-gray-200 dark:border-[#2e2e2c] bg-gray-50 dark:bg-[#1e1e1c] rounded-lg px-2.5 py-1.5 text-xs outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all appearance-none cursor-pointer"
+          :value="entry.subject"
+          @change="onSubjectChange($event)"
+          @blur="onBlur"
+        >
+          <option value="">-- 选择学科 --</option>
+          <option v-for="s in allSubjects || []" :key="s" :value="s">{{ s }}</option>
+          <option
+            v-if="entry.subject && !(allSubjects || []).includes(entry.subject)"
+            :value="entry.subject"
+            hidden
+          >
+            {{ entry.subject }}
+          </option>
+        </select>
+        <svg
+          class="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none w-3 h-3 text-gray-400 dark:text-gray-500"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+
+      <!-- Source select -->
+      <div class="relative w-[130px]">
+        <select
+          class="w-full border border-gray-200 dark:border-[#2e2e2c] bg-gray-50 dark:bg-[#1e1e1c] rounded-lg px-2.5 py-1.5 text-xs outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all appearance-none cursor-pointer"
+          :value="entry.source"
+          @change="onSourceChange($event)"
+          @blur="onBlur"
+        >
+          <option value="">-- 选择来源 --</option>
+          <option v-for="s in allSources || []" :key="s" :value="s">{{ s }}</option>
+          <option
+            v-if="entry.source && !(allSources || []).includes(entry.source)"
+            :value="entry.source"
+            hidden
+          >
+            {{ entry.source }}
+          </option>
+        </select>
+        <svg
+          class="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none w-3 h-3 text-gray-400 dark:text-gray-500"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+      <!-- <select ...> ... </select> -->
+
+      <!-- Tags multi-select (same style as subject/source) -->
+      <div class="relative w-[150px]">
+        <TagMultiSelect
+          :model-value="entry.tags"
+          :all-tags="allTags || []"
+          @update:model-value="onTagsChange($event)"
+          @add-tag="(name) => emit('add-tag', name)"
+        />
+      </div>
     </div>
 
     <!-- Review history timeline -->
@@ -562,7 +607,7 @@ onUnmounted(() => {
           />
         </div>
       </div>
-      <div class="flex-1 overflow-y-auto">
+      <div class="flex-1 overflow-y-auto overscroll-contain" @wheel="onQuestionWheel">
         <div ref="questionContentRef" :style="{ position: 'relative', minHeight: '100%' }">
           <div class="relative h-full">
             <div
@@ -595,7 +640,7 @@ onUnmounted(() => {
     <!-- Answers row -->
     <div
       ref="answersRowEl"
-      class="flex-1 flex gap-3 min-h-[180px] overflow-hidden"
+      class="flex-1 flex gap-3 min-h-[180px] overflow-hidden overscroll-contain"
       :class="answersNarrow ? 'flex-col' : ''"
     >
       <div ref="wrongPanelEl" class="flex-1 flex min-h-0">

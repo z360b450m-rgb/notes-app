@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // @AI-NOTE: 侧边栏组件 —— 筛选/排序/条目选择由 useFilter/useEntries
 // Hook 驱动。禁止在此实现筛选逻辑或直接操作数据库。
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import type { NoteEntry } from '@/types'
 import type { SortKey, SortDir } from '@/composables/useFilter'
 import SubjectChips from './SubjectChips.vue'
 import TagDots from './TagDots.vue'
 import EntryList from './EntryList.vue'
+import TagMultiSelect from './TagMultiSelect.vue'
 import { MASTERY_LEVEL_DEFS } from '@/composables/useStats'
 
 const props = defineProps<{
@@ -22,6 +23,11 @@ const props = defineProps<{
   subjectMap: Record<string, number>
   tagMap: Record<string, number>
   masteryMap: Record<string, number>
+  allSubjects: string[]
+  allTags: string[]
+  allSources: string[]
+  activeSource: string | null
+  sourceMap: Record<string, number>
   dueCount: number
   mode: 'edit' | 'review'
   selectedIds: Set<string>
@@ -33,6 +39,7 @@ const emit = defineEmits<{
   'return-to-menu': []
   filterSubject: [subject: string]
   filterTag: [tag: string]
+  filterSource: [source: string | null]
   filterMastery: [label: string]
   quickCreate: [subject: string]
   rename: [id: string, newTitle: string]
@@ -43,6 +50,9 @@ const emit = defineEmits<{
   'range-select': [ids: string[], fromIdx: number, toIdx: number]
   'select-all': [ids: string[]]
   'deselect-all': []
+  'add-subject': [name: string]
+  'add-tag': [name: string]
+  'add-source': [name: string]
   'batch-delete': []
   'batch-tag': [tags: string[]]
   'batch-export': []
@@ -54,7 +64,10 @@ const sortOpen = ref(false)
 const batchMenuOpen = ref(false)
 const tagInputOpen = ref(false)
 const masteryOpen = ref(false)
-const tagText = ref('')
+const batchSelectedTags = ref<string[]>([])
+const addingSource = ref(false)
+const newSourceName = ref('')
+const newSourceInput = ref<HTMLInputElement | null>(null)
 
 const sortOptions: { key: SortKey; label: string }[] = [
   { key: 'updatedAt', label: '更新时间' },
@@ -98,26 +111,38 @@ function handleBatchExport() {
 }
 
 function openTagInput() {
-  tagText.value = ''
+  batchSelectedTags.value = []
   tagInputOpen.value = true
 }
 
-function confirmTags() {
-  const tags = tagText.value
-    .split(/[,，]/)
-    .map((t) => t.trim())
-    .filter(Boolean)
-  if (tags.length > 0) {
-    emit('batch-tag', tags)
+function confirmBatchTags() {
+  if (batchSelectedTags.value.length > 0) {
+    emit('batch-tag', batchSelectedTags.value)
   }
   tagInputOpen.value = false
   batchMenuOpen.value = false
-  tagText.value = ''
+  batchSelectedTags.value = []
 }
 
-function cancelTags() {
+function cancelBatchTags() {
   tagInputOpen.value = false
-  tagText.value = ''
+  batchSelectedTags.value = []
+}
+
+function startAddSource() {
+  addingSource.value = true
+  newSourceName.value = ''
+  nextTick(() => newSourceInput.value?.focus())
+}
+
+function confirmAddSource() {
+  const name = newSourceName.value.trim()
+  if (name) emit('add-source', name)
+  addingSource.value = false
+}
+
+function cancelAddSource() {
+  addingSource.value = false
 }
 </script>
 
@@ -269,14 +294,90 @@ function cancelTags() {
         <SubjectChips
           :active-subject="activeSubject"
           :subject-map="subjectMap"
+          :all-subjects="allSubjects"
           :all-count="entries.length"
           :none-count="entries.filter((e) => !e.subject).length"
           @filter="emit('filterSubject', $event)"
           @quick-create="emit('quickCreate', $event)"
+          @add-subject="(name) => emit('add-subject', name)"
         />
 
         <!-- Tag filter -->
-        <TagDots :active-tag="activeTag" :tag-map="tagMap" @filter="emit('filterTag', $event)" />
+        <TagDots
+          :active-tag="activeTag"
+          :tag-map="tagMap"
+          :all-tags="allTags"
+          @filter="emit('filterTag', $event)"
+          @add-tag="(name) => emit('add-tag', name)"
+        />
+
+        <!-- Source filter -->
+        <div class="sidebar-section mb-3.5 mt-3">
+          <div class="flex items-center justify-between mb-1.5">
+            <h3
+              class="text-[12px] uppercase tracking-[0.7px] text-gray-500 dark:text-brand-mid font-semibold"
+            >
+              来源
+            </h3>
+            <button
+              class="w-5 h-5 flex items-center justify-center rounded text-gray-400 dark:text-gray-500 hover:text-accent dark:hover:text-accent hover:bg-accent/10 transition-colors"
+              title="新建来源"
+              @click="startAddSource()"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Inline input for new source -->
+          <div v-if="addingSource" class="flex items-center gap-1 mb-1.5">
+            <input
+              ref="newSourceInput"
+              v-model="newSourceName"
+              type="text"
+              class="flex-1 text-[12px] px-2 py-1 rounded-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+              placeholder="新来源名称"
+              @keydown.enter="confirmAddSource()"
+              @keydown.escape="cancelAddSource()"
+            />
+            <button
+              class="text-[11px] px-1.5 py-1 rounded bg-accent text-white hover:bg-accent/90 transition-colors flex-shrink-0"
+              @click="confirmAddSource()"
+            >
+              确定
+            </button>
+            <button
+              class="text-[11px] px-1.5 py-1 rounded border border-gray-200 dark:border-[#2e2e2c] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a28] transition-colors flex-shrink-0"
+              @click="cancelAddSource()"
+            >
+              取消
+            </button>
+          </div>
+
+          <div class="flex flex-wrap gap-1">
+            <template v-if="allSources.length === 0">
+              <span class="text-[12px] text-gray-500 dark:text-brand-mid">暂无来源</span>
+            </template>
+            <button
+              v-for="source in allSources"
+              :key="source"
+              class="source-chip text-[12px] px-2 py-0.5 rounded-md bg-brand-light-gray dark:bg-[#2a2a28] text-brand-mid dark:text-brand-mid cursor-pointer border-none transition-all duration-200 ease-out active:scale-95 hover:bg-accent-light hover:text-accent"
+              :class="{ '!bg-accent !text-white': activeSource === source }"
+              @click="emit('filterSource', activeSource === source ? null : source)"
+            >
+              {{ source }} ({{ sourceMap[source] || 0 }})
+            </button>
+          </div>
+        </div>
 
         <!-- Mastery filter -->
         <div class="mt-3">
@@ -402,25 +503,23 @@ function cancelTags() {
               >
                 <!-- Tag input inline -->
                 <template v-if="tagInputOpen">
-                  <div class="px-3 py-2">
-                    <input
-                      v-model="tagText"
-                      type="text"
-                      class="w-full border border-gray-200 dark:border-[#2e2e2c] rounded-lg px-2 py-1 text-[12px] outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
-                      placeholder="标签1, 标签2"
-                      @keydown.enter="confirmTags"
-                      @keydown.escape="cancelTags"
+                  <div class="px-3 py-2 min-w-[220px]">
+                    <TagMultiSelect
+                      v-model="batchSelectedTags"
+                      :all-tags="allTags"
+                      placeholder="搜索或新建标签..."
+                      @add-tag="(name) => emit('add-tag', name)"
                     />
                     <div class="flex justify-end gap-1.5 mt-2">
                       <button
                         class="px-2.5 py-1 rounded text-[11px] text-gray-400 dark:text-brand-mid hover:text-gray-600 dark:text-brand-light-gray transition-all duration-200 ease-out active:scale-95"
-                        @click="cancelTags"
+                        @click="cancelBatchTags"
                       >
                         取消
                       </button>
                       <button
                         class="px-2.5 py-1 rounded text-[11px] bg-accent text-white hover:brightness-110 transition-all"
-                        @click="confirmTags"
+                        @click="confirmBatchTags"
                       >
                         确认
                       </button>

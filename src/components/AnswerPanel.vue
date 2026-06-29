@@ -140,6 +140,16 @@ function onDrop(e: DragEvent) {
   }
 }
 
+function onBodyWheel(e: WheelEvent) {
+  const el = wrapperRef.value
+  if (!el) return
+  const atTop = el.scrollTop <= 0
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
+  if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) {
+    e.preventDefault()
+  }
+}
+
 function openFilePicker() {
   fileInput.value?.click()
 }
@@ -169,7 +179,7 @@ function onScreenshotCapture(dataUrl: string) {
 <template>
   <!-- @AI-VIEW: DOM 可自由重构。样式仅限 Tailwind CSS 工具类。严禁内联 style 或自定义 CSS。 -->
   <div
-    class="answer-panel flex-1 flex flex-col overflow-hidden rounded-lg border group"
+    class="answer-panel flex-1 flex flex-col overflow-hidden overscroll-contain rounded-lg border group"
     :class="panelBg"
   >
     <div
@@ -240,10 +250,15 @@ function onScreenshotCapture(dataUrl: string) {
       </div>
     </div>
 
-    <div v-if="!showHidden" ref="wrapperRef" class="flex-1 relative group">
+    <div
+      v-if="!showHidden"
+      ref="wrapperRef"
+      class="flex-1 overflow-y-auto overscroll-contain"
+      @wheel="onBodyWheel"
+    >
       <div
         ref="bodyRef"
-        class="panel-body w-full h-full px-3.5 py-3 overflow-y-auto text-base leading-relaxed md-content outline-none text-gray-800 dark:text-gray-200"
+        class="panel-body px-3.5 py-3 text-base leading-relaxed md-content outline-none text-gray-800 dark:text-gray-200 min-h-full"
         contenteditable="true"
         :data-placeholder="'输入' + label + '…'"
         @input="onInput"

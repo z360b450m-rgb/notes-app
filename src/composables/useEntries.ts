@@ -4,8 +4,10 @@ import { db } from '@/services/db'
 import { useReviewSettings } from '@/composables/useReviewSettings'
 import { useNotebooks } from '@/composables/useNotebooks'
 import { useRagSync } from '@/composables/useRagSync'
+import { useAiFeatures } from '@/composables/useAiFeatures'
 
 const ragSync = useRagSync()
+const { enabled: aiEnabled } = useAiFeatures()
 
 // IndexedDB can't store Vue Proxy objects (structured clone error)
 function toPlain<T>(obj: T): T {
@@ -25,17 +27,26 @@ function stripMd(s: string): string {
 }
 
 function isPlaceholderTitle(t: string): boolean {
-  return !t || /^无题目(\s*\(\d+\))?$/.test(t)
+  if (!t) return true
+  if (/^无题目(\s*\(\d+\))?$/.test(t)) return true
+  if (/^\d{2}-\d{1,2}-\d{1,2}-\d+$/.test(t)) return true
+  return false
 }
 
 function nextPlaceholderTitle(entries: NoteEntry[]): string {
+  const now = new Date()
+  const y = String(now.getFullYear()).slice(-2)
+  const m = now.getMonth() + 1
+  const d = now.getDate()
+  const prefix = `${y}-${m}-${d}`
+
+  const re = new RegExp(`^${y}-${m}-${d}-(\\d+)$`)
   let max = 0
-  const re = /^无题目\s*\((\d+)\)$/
   entries.forEach((e) => {
-    const m = e.title?.match(re)
-    if (m) max = Math.max(max, parseInt(m[1], 10))
+    const match = e.title?.match(re)
+    if (match) max = Math.max(max, parseInt(match[1], 10))
   })
-  return '无题目 (' + (max + 1) + ')'
+  return `${prefix}-${max + 1}`
 }
 
 // ===================================================================
@@ -278,11 +289,6 @@ export function useEntries() {
     const entry = entries.value.find((e) => e.id === activeId.value)
     if (!entry) return
 
-    const qt = stripMd(entry.question)
-    if (qt && isPlaceholderTitle(entry.title)) {
-      entry.title = qt.slice(0, 40)
-    }
-
     entry.updatedAt = Date.now()
     try {
       await db.put(toPlain(entry))
@@ -295,8 +301,9 @@ export function useEntries() {
     } catch {
       /* ok if missing */
     }
-    // RAG 同步：失败静默，不阻塞保存流程
-    void ragSync.upsertEntry(toPlain(entry))
+    if (aiEnabled.value) {
+      void ragSync.upsertEntry(toPlain(entry))
+    }
     isDirty.value = false
     showToast('已保存')
   }
@@ -336,7 +343,9 @@ export function useEntries() {
     activeId.value = null
     isDirty.value = false
     showDeleteModal.value = false
-    void ragSync.deleteEntry(deletedId)
+    if (aiEnabled.value) {
+      void ragSync.deleteEntry(deletedId)
+    }
     showToast('错题已删除')
   }
 
@@ -347,7 +356,9 @@ export function useEntries() {
     entry.updatedAt = Date.now()
     try {
       await db.put(toPlain(entry))
-      void ragSync.upsertEntry(toPlain(entry))
+      if (aiEnabled.value) {
+        void ragSync.upsertEntry(toPlain(entry))
+      }
       showToast('已重命名')
     } catch (err) {
       console.error('Rename failed', err)

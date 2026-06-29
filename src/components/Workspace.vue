@@ -10,7 +10,7 @@ import { PEN_COLORS } from '@/composables/useDrawing'
 import AppSidebar from './AppSidebar.vue'
 import AppToolbar from './AppToolbar.vue'
 import NoteEditor from './NoteEditor.vue'
-import AiChatSidebar from './AiChatSidebar.vue'
+// import AiChatSidebar from './AiChatSidebar.vue'
 import ReviewPanel from './ReviewPanel.vue'
 import DeleteModal from './DeleteModal.vue'
 import StatsPanel from './StatsPanel.vue'
@@ -28,6 +28,7 @@ const props = defineProps<{
   selectedCount: number
   subjectMap: Record<string, number>
   tagMap: Record<string, number>
+  sourceMap: Record<string, number>
   masteryMap: Record<string, number>
   dueCount: number
   mode: 'edit' | 'review'
@@ -62,7 +63,11 @@ const props = defineProps<{
   reviewQueue: NoteEntry[]
   activeSubject: string
   activeTag: string | null
+  activeSource: string | null
   activeMastery: string
+  allSubjects: string[]
+  allTags: string[]
+  allSources: string[]
 }>()
 
 const emit = defineEmits<{
@@ -75,6 +80,7 @@ const emit = defineEmits<{
   // Filters
   'filter-subject': [subject: string]
   'filter-tag': [tag: string | null]
+  'filter-source': [source: string | null]
   'filter-mastery': [label: string]
   'filter-search': [query: string]
 
@@ -122,6 +128,9 @@ const emit = defineEmits<{
   'batch-delete': []
   'confirm-batch-delete': []
   'cancel-batch-delete': []
+  'add-subject': [name: string]
+  'add-tag': [name: string]
+  'add-source': [name: string]
   'batch-tag': [tags: string[]]
   'batch-export': []
 
@@ -192,10 +201,16 @@ function onWheel(e: WheelEvent) {
       :mode="mode"
       :selected-ids="selectedIds"
       :selected-count="selectedCount"
+      :all-subjects="allSubjects"
+      :all-tags="allTags"
+      :all-sources="allSources"
+      :active-source="activeSource"
+      :source-map="sourceMap"
       @return-to-menu="emit('return-to-menu')"
       @select="(id) => emit('select', id)"
       @filter-subject="(s) => emit('filter-subject', s)"
       @filter-tag="(t) => emit('filter-tag', t)"
+      @filter-source="(s) => emit('filter-source', s)"
       @filter-mastery="(l) => emit('filter-mastery', l)"
       @quick-create="(s) => emit('quick-create', s)"
       @rename="(id, title) => emit('rename', id, title)"
@@ -206,6 +221,9 @@ function onWheel(e: WheelEvent) {
       @range-select="(ids, from, to) => emit('range-select', ids, from, to)"
       @select-all="(ids) => emit('select-all', ids)"
       @deselect-all="emit('deselect-all')"
+      @add-subject="(name) => emit('add-subject', name)"
+      @add-tag="(name) => emit('add-tag', name)"
+      @add-source="(name) => emit('add-source', name)"
       @batch-delete="emit('batch-delete')"
       @batch-tag="(tags) => emit('batch-tag', tags)"
       @batch-export="emit('batch-export')"
@@ -248,12 +266,16 @@ function onWheel(e: WheelEvent) {
             class="flex-1 min-w-0"
             :entry="activeEntry"
             :answers-hidden="answersHidden"
+            :all-subjects="allSubjects"
+            :all-tags="allTags"
+            :all-sources="allSources"
             @update="emit('mark-dirty')"
             @blur-save="emit('blur-save')"
             @reveal="emit('reveal')"
             @mount-canvas="(el, entryId) => emit('mount-canvas', el, entryId)"
+            @add-tag="(name) => emit('add-tag', name)"
           />
-          <AiChatSidebar :entry="activeEntry" />
+          <!-- <AiChatSidebar :entry="activeEntry" /> -->
         </div>
 
         <ReviewPanel

@@ -6,6 +6,7 @@ import { useEntries } from './composables/useEntries'
 import { migrateFromIndexedDB } from './services/db'
 import { useFilter } from './composables/useFilter'
 import type { SortKey, SortDir } from './composables/useFilter'
+import { useMetaStore } from './composables/useMetaStore'
 import { useReview } from './composables/useReview'
 import { useReviewSettings } from './composables/useReviewSettings'
 import { useNotebooks } from './composables/useNotebooks'
@@ -75,6 +76,7 @@ const showNotebookMenu = ref(true)
 const {
   activeSubject,
   activeTag,
+  activeSource,
   activeMastery,
   searchQuery,
   sortKey,
@@ -82,13 +84,18 @@ const {
   filteredEntries,
   subjectMap,
   tagMap,
+  sourceMap,
   masteryMap,
   setSubject,
   setTag,
+  setSource,
   setMastery,
   setSearch,
   setSort,
 } = useFilter(notebookEntries)
+
+const { allSubjects, allTags, allSources, addSubject, addTag, addSource } =
+  useMetaStore(notebookEntries)
 
 const {
   mode,
@@ -455,6 +462,18 @@ function handleBatchTag(tags: string[]) {
   showToast(`已为 ${selectedCount.value} 条错题添加标签`)
 }
 
+function handleAddSubject(name: string) {
+  addSubject(name)
+}
+
+function handleAddTag(name: string) {
+  addTag(name)
+}
+
+function handleAddSource(name: string) {
+  addSource(name)
+}
+
 function handleBatchExport() {
   batchExport(Array.from(selectedIds.value))
 }
@@ -617,6 +636,9 @@ watch(activeId, (_newId) => {
       :selected-count="selectedCount"
       :subject-map="subjectMap"
       :tag-map="tagMap"
+      :all-subjects="allSubjects"
+      :all-tags="allTags"
+      :all-sources="allSources"
       :mastery-map="masteryMap"
       :due-count="dueCount"
       :mode="mode"
@@ -650,12 +672,15 @@ watch(activeId, (_newId) => {
       :review-queue="reviewQueue"
       :active-subject="activeSubject"
       :active-tag="activeTag"
+      :active-source="activeSource"
       :active-mastery="activeMastery"
+      :source-map="sourceMap"
       :stats="stats"
       @return-to-menu="handleReturnToMenu"
       @select="handleSelectEntry"
       @filter-subject="setSubject"
       @filter-tag="setTag"
+      @filter-source="setSource"
       @filter-mastery="setMastery"
       @filter-search="setSearch"
       @set-sort="(key: SortKey, dir?: SortDir) => setSort(key, dir)"
@@ -691,6 +716,9 @@ watch(activeId, (_newId) => {
       @batch-delete="handleBatchDelete"
       @confirm-batch-delete="confirmBatchDelete"
       @cancel-batch-delete="cancelBatchDelete"
+      @add-subject="handleAddSubject"
+      @add-tag="handleAddTag"
+      @add-source="handleAddSource"
       @batch-tag="handleBatchTag"
       @batch-export="handleBatchExport"
       @export-json="exportData"

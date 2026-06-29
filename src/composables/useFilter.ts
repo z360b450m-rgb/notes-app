@@ -8,6 +8,7 @@ export type SortDir = 'asc' | 'desc'
 export interface FilterState {
   activeSubject: Ref<string>
   activeTag: Ref<string | null>
+  activeSource: Ref<string | null>
   activeMastery: Ref<string>
   searchQuery: Ref<string>
   sortKey: Ref<SortKey>
@@ -15,9 +16,11 @@ export interface FilterState {
   filteredEntries: ComputedRef<NoteEntry[]>
   subjectMap: ComputedRef<Record<string, number>>
   tagMap: ComputedRef<Record<string, number>>
+  sourceMap: ComputedRef<Record<string, number>>
   masteryMap: ComputedRef<Record<string, number>>
   setSubject: (s: string) => void
   setTag: (t: string) => void
+  setSource: (s: string) => void
   setMastery: (label: string) => void
   setSearch: (q: string) => void
   setSort: (key: SortKey, dir?: SortDir) => void
@@ -31,6 +34,7 @@ export interface FilterState {
 export function useFilter(entries: Ref<NoteEntry[]>): FilterState {
   const activeSubject = ref('__all__')
   const activeTag = ref<string | null>(null)
+  const activeSource = ref<string | null>(null)
   const activeMastery = ref('__all__')
   const searchQuery = ref('')
   const sortKey = ref<SortKey>('updatedAt')
@@ -52,6 +56,10 @@ export function useFilter(entries: Ref<NoteEntry[]>): FilterState {
 
     if (activeTag.value) {
       list = list.filter((e) => e.tags?.includes(activeTag.value!))
+    }
+
+    if (activeSource.value) {
+      list = list.filter((e) => e.source === activeSource.value)
     }
 
     if (activeMastery.value !== '__all__') {
@@ -126,6 +134,14 @@ export function useFilter(entries: Ref<NoteEntry[]>): FilterState {
     return map
   })
 
+  const sourceMap = computed(() => {
+    const map: Record<string, number> = {}
+    entries.value.forEach((e) => {
+      if (e.source) map[e.source] = (map[e.source] || 0) + 1
+    })
+    return map
+  })
+
   function setSubject(s: string) {
     activeSubject.value = s
     activeTag.value = null
@@ -133,6 +149,10 @@ export function useFilter(entries: Ref<NoteEntry[]>): FilterState {
 
   function setTag(t: string) {
     activeTag.value = activeTag.value === t ? null : t
+  }
+
+  function setSource(s: string) {
+    activeSource.value = activeSource.value === s ? null : s
   }
 
   const masteryMap = computed(() => {
@@ -171,6 +191,7 @@ export function useFilter(entries: Ref<NoteEntry[]>): FilterState {
   return {
     activeSubject,
     activeTag,
+    activeSource,
     activeMastery,
     searchQuery,
     sortKey,
@@ -178,9 +199,11 @@ export function useFilter(entries: Ref<NoteEntry[]>): FilterState {
     filteredEntries,
     subjectMap,
     tagMap,
+    sourceMap,
     masteryMap,
     setSubject,
     setTag,
+    setSource,
     setMastery,
     setSearch,
     setSort,

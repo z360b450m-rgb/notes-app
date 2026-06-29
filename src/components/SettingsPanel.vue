@@ -3,10 +3,12 @@
 // useDarkMode Hook。禁止直接操作 localStorage 或存储。
 import { reactive, ref, watch } from 'vue'
 import { useReviewSettings } from '@/composables/useReviewSettings'
-import AiSkillsEditor from './AiSkillsEditor.vue'
-import KnowledgeBaseManager from './KnowledgeBaseManager.vue'
+// import AiSkillsEditor from './AiSkillsEditor.vue'
+// import KnowledgeBaseManager from './KnowledgeBaseManager.vue'
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const aiSkillsExpanded = ref(false)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const kbExpanded = ref(false)
 
 defineProps<{
@@ -302,7 +304,7 @@ function save() {
           </button>
         </div>
 
-        <!-- 知识库 -->
+        <!-- 知识库（已关闭）
         <div class="pt-4 border-t border-gray-100 dark:border-[#2e2e2c]">
           <button
             class="w-full flex items-center justify-between text-left"
@@ -333,7 +335,6 @@ function save() {
           </div>
         </div>
 
-        <!-- AI 指令库 -->
         <div class="pt-4 border-t border-gray-100 dark:border-[#2e2e2c]">
           <button
             class="w-full flex items-center justify-between text-left"
@@ -363,6 +364,7 @@ function save() {
             <AiSkillsEditor />
           </div>
         </div>
+        -->
       </div>
     </div>
   </div>

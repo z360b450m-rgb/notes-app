@@ -65,7 +65,11 @@ function load(): AiSkill[] {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(seeds))
       return seeds
     }
-    return JSON.parse(raw) as AiSkill[]
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      return builtinSeeds()
+    }
+    return parsed as AiSkill[]
   } catch {
     return builtinSeeds()
   }
