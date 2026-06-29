@@ -2,65 +2,47 @@ name: E2E Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/*]
   pull_request:
     branches: [main]
 
 jobs:
-  test:
+  e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: npm
 
-      - name: Install Node deps
-        run: npm ci
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
+      - name: Install Node dependencies
+        run: npm ci
+
       - name: Install Playwright
         run: |
-          python -m pip install --upgrade pip
           pip install playwright
           python -m playwright install chromium --with-deps
 
-      - name: Start Vite dev server
+      - name: Start dev server
+        run: npm run dev &
+        env:
+          NODE_ENV: test
+
+      - name: Wait for server
         run: |
-          npx vite --host localhost &
-          # Wait for dev server to be ready
-          for i in $(seq 1 20); do
-            if curl -s http://localhost:5173 > /dev/null; then
-              echo "Vite dev server ready"
-              break
-            fi
-            echo "Waiting for dev server... ($i)"
-            sleep 2
-            if [ $i -eq 20 ]; then
-              echo "Failed to start Vite dev server"
-              exit 1
-            fi
+          for i in $(seq 1 30); do
+            curl -s http://localhost:5173 > /dev/null && echo "Server ready" && break
+            echo "Waiting... ($i)"
+            sleep 1
           done
 
       - name: Run E2E tests
         run: npm run test:e2e
-
-      - name: Upload debug screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-screenshots
-          path: |
-            debug.png
-            screenshot_*.png
-          if-no-files-found: ignore
