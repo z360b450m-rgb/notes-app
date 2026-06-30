@@ -109,7 +109,16 @@ function getNotebooksMetaPath() {
   return path.join(getDataDir(), 'notebooks.json')
 }
 
+const VALID_ID_RE = /^[a-zA-Z0-9_-]+$/
+
+function assertSafeId(id) {
+  if (typeof id !== 'string' || !VALID_ID_RE.test(id)) {
+    throw new Error(`Invalid notebook id: ${id}`)
+  }
+}
+
 function getNotebookDataPath(notebookId) {
+  assertSafeId(notebookId)
   return path.join(getDataDir(), `notebook_${notebookId}.json`)
 }
 
@@ -424,6 +433,35 @@ function extractImages(html) {
   return { html: replaced, images }
 }
 
+function safeExtractZip(zip, destDir) {
+  const entries = zip.getEntries()
+  for (const entry of entries) {
+    // Skip directories — adm-zip handles them via getData
+    if (entry.isDirectory) {
+      const dirPath = path.resolve(destDir, entry.entryName)
+      if (
+        !dirPath.startsWith(path.resolve(destDir) + path.sep) &&
+        dirPath !== path.resolve(destDir)
+      ) {
+        throw new Error(`Path traversal detected: ${entry.entryName}`)
+      }
+      if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true })
+      continue
+    }
+    // Validate the resolved path stays within destDir
+    const resolved = path.resolve(destDir, entry.entryName)
+    const destResolved = path.resolve(destDir)
+    if (!resolved.startsWith(destResolved + path.sep)) {
+      throw new Error(`Path traversal detected: ${entry.entryName}`)
+    }
+    // Ensure parent directory exists
+    const parent = path.dirname(resolved)
+    if (!fs.existsSync(parent)) fs.mkdirSync(parent, { recursive: true })
+    // Write file
+    fs.writeFileSync(resolved, entry.getData())
+  }
+}
+
 function restoreImages(html, imagesDir) {
   return html.replace(/<img[^>]+src="images\/([^"]+)"[^>]*>/gi, (match, filename) => {
     const safeFilename = path.basename(filename)
@@ -615,9 +653,9 @@ ipcMain.handle('storage:importArchive', async (_e, keepReviewState) => {
     if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true })
     fs.mkdirSync(tmpDir, { recursive: true })
 
-    // Extract archive
+    // Extract archive (safe: validates each entry path against zip slip)
     const zip = new AdmZip(filePath)
-    zip.extractAllTo(tmpDir, true)
+    safeExtractZip(zip, tmpDir)
 
     const dataJsonPath = path.join(tmpDir, 'data.json')
     if (!fs.existsSync(dataJsonPath)) {
