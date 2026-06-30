@@ -175,21 +175,21 @@
   transform: translateX(100%);
 }
 
-/* Mastery dropdown expand/collapse */
-.mastery-enter-active {
-  transition: all 0.25s ease;
+/* Section collapse/expand via CSS Grid (auto-height animation) */
+.section-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s cubic-bezier(0.25, 1, 0.5, 1);
 }
-.mastery-leave-active {
-  transition: all 0.2s ease;
+.section-collapse.active {
+  grid-template-rows: 1fr;
 }
-.mastery-enter-from,
-.mastery-leave-to {
+.section-collapse-inner {
+  overflow: hidden;
   opacity: 0;
-  max-height: 0;
-  margin-top: 0;
+  transition: opacity 0.2s ease;
 }
-.mastery-enter-to,
-.mastery-leave-from {
+.section-collapse.active .section-collapse-inner {
   opacity: 1;
-  max-height: 200px;
+  transition: opacity 0.3s ease 0.1s;
 }

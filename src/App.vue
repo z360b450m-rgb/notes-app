@@ -60,6 +60,13 @@ const {
   batchTag,
   batchExport,
   notebookEntries,
+  // entity rename/delete
+  renameSubjectInEntries,
+  renameTagInEntries,
+  renameSourceInEntries,
+  removeSubjectFromEntries,
+  removeTagFromEntries,
+  removeSourceFromEntries,
 } = useEntries()
 
 const {
@@ -94,8 +101,20 @@ const {
   setSort,
 } = useFilter(notebookEntries)
 
-const { allSubjects, allTags, allSources, addSubject, addTag, addSource } =
-  useMetaStore(notebookEntries)
+const {
+  allSubjects,
+  allTags,
+  allSources,
+  addSubject,
+  removeSubject,
+  renameSubject,
+  addTag,
+  removeTag,
+  renameTag,
+  addSource,
+  removeSource,
+  renameSource,
+} = useMetaStore(notebookEntries)
 
 const {
   mode,
@@ -474,6 +493,96 @@ function handleAddSource(name: string) {
   addSource(name)
 }
 
+async function handleRenameSubject(oldName: string, newName: string) {
+  try {
+    await renameSubjectInEntries(oldName, newName)
+  } catch (err) {
+    console.error('Rename subject failed:', err)
+    showToast('重命名失败，请重试')
+    return
+  }
+  renameSubject(oldName, newName)
+  if (activeSubject.value === oldName) {
+    activeSubject.value = newName
+  }
+  showToast(`学科已重命名为 "${newName}"`)
+}
+
+async function handleDeleteSubject(name: string) {
+  try {
+    await removeSubjectFromEntries(name)
+  } catch (err) {
+    console.error('Delete subject failed:', err)
+    showToast('删除失败，请重试')
+    return
+  }
+  removeSubject(name)
+  if (activeSubject.value === name) {
+    activeSubject.value = '__all__'
+  }
+  showToast(`学科 "${name}" 已删除`)
+}
+
+async function handleRenameTag(oldName: string, newName: string) {
+  try {
+    await renameTagInEntries(oldName, newName)
+  } catch (err) {
+    console.error('Rename tag failed:', err)
+    showToast('重命名失败，请重试')
+    return
+  }
+  renameTag(oldName, newName)
+  if (activeTag.value === oldName) {
+    activeTag.value = newName
+  }
+  showToast(`标签已重命名为 "${newName}"`)
+}
+
+async function handleDeleteTag(name: string) {
+  try {
+    await removeTagFromEntries(name)
+  } catch (err) {
+    console.error('Delete tag failed:', err)
+    showToast('删除失败，请重试')
+    return
+  }
+  removeTag(name)
+  if (activeTag.value === name) {
+    activeTag.value = null
+  }
+  showToast(`标签 "${name}" 已删除`)
+}
+
+async function handleRenameSource(oldName: string, newName: string) {
+  try {
+    await renameSourceInEntries(oldName, newName)
+  } catch (err) {
+    console.error('Rename source failed:', err)
+    showToast('重命名失败，请重试')
+    return
+  }
+  renameSource(oldName, newName)
+  if (activeSource.value === oldName) {
+    activeSource.value = newName
+  }
+  showToast(`来源已重命名为 "${newName}"`)
+}
+
+async function handleDeleteSource(name: string) {
+  try {
+    await removeSourceFromEntries(name)
+  } catch (err) {
+    console.error('Delete source failed:', err)
+    showToast('删除失败，请重试')
+    return
+  }
+  removeSource(name)
+  if (activeSource.value === name) {
+    activeSource.value = null
+  }
+  showToast(`来源 "${name}" 已删除`)
+}
+
 function handleBatchExport() {
   batchExport(Array.from(selectedIds.value))
 }
@@ -719,6 +828,12 @@ watch(activeId, (_newId) => {
       @add-subject="handleAddSubject"
       @add-tag="handleAddTag"
       @add-source="handleAddSource"
+      @rename-subject="handleRenameSubject"
+      @delete-subject="handleDeleteSubject"
+      @rename-tag="handleRenameTag"
+      @delete-tag="handleDeleteTag"
+      @rename-source="handleRenameSource"
+      @delete-source="handleDeleteSource"
       @batch-tag="handleBatchTag"
       @batch-export="handleBatchExport"
       @export-json="exportData"

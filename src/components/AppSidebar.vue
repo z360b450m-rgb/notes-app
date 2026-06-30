@@ -53,6 +53,12 @@ const emit = defineEmits<{
   'add-subject': [name: string]
   'add-tag': [name: string]
   'add-source': [name: string]
+  'rename-subject': [oldName: string, newName: string]
+  'delete-subject': [name: string]
+  'rename-tag': [oldName: string, newName: string]
+  'delete-tag': [name: string]
+  'rename-source': [oldName: string, newName: string]
+  'delete-source': [name: string]
   'batch-delete': []
   'batch-tag': [tags: string[]]
   'batch-export': []
@@ -65,9 +71,49 @@ const batchMenuOpen = ref(false)
 const tagInputOpen = ref(false)
 const masteryOpen = ref(false)
 const batchSelectedTags = ref<string[]>([])
+const sourceSectionOpen = ref(true)
 const addingSource = ref(false)
 const newSourceName = ref('')
 const newSourceInput = ref<HTMLInputElement | null>(null)
+
+// Source edit/delete state
+const editingSource = ref<string | null>(null)
+const editSourceValue = ref('')
+const editSourceInput: HTMLInputElement | null = null
+const deletingSource = ref<string | null>(null)
+
+function startEditSource(name: string) {
+  editingSource.value = name
+  editSourceValue.value = name
+  nextTick(() => editSourceInput?.focus())
+}
+
+function confirmEditSource() {
+  const trimmed = editSourceValue.value.trim()
+  if (trimmed && editingSource.value && trimmed !== editingSource.value) {
+    emit('rename-source', editingSource.value, trimmed)
+  }
+  editingSource.value = null
+}
+
+function cancelEditSource() {
+  editingSource.value = null
+}
+
+function startDeleteSource(name: string) {
+  deletingSource.value = name
+}
+
+function confirmDeleteSource() {
+  if (deletingSource.value) {
+    emit('delete-source', deletingSource.value)
+  }
+  deletingSource.value = null
+}
+
+function cancelDeleteSource() {
+  deletingSource.value = null
+}
 
 const sortOptions: { key: SortKey; label: string }[] = [
   { key: 'updatedAt', label: '更新时间' },
@@ -130,6 +176,7 @@ function cancelBatchTags() {
 }
 
 function startAddSource() {
+  sourceSectionOpen.value = true
   addingSource.value = true
   newSourceName.value = ''
   nextTick(() => newSourceInput.value?.focus())
@@ -300,6 +347,8 @@ function cancelAddSource() {
           @filter="emit('filterSubject', $event)"
           @quick-create="emit('quickCreate', $event)"
           @add-subject="(name) => emit('add-subject', name)"
+          @rename-subject="(oldName, newName) => emit('rename-subject', oldName, newName)"
+          @delete-subject="(name) => emit('delete-subject', name)"
         />
 
         <!-- Tag filter -->
@@ -309,24 +358,39 @@ function cancelAddSource() {
           :all-tags="allTags"
           @filter="emit('filterTag', $event)"
           @add-tag="(name) => emit('add-tag', name)"
+          @rename-tag="(oldName, newName) => emit('rename-tag', oldName, newName)"
+          @delete-tag="(name) => emit('delete-tag', name)"
         />
 
         <!-- Source filter -->
-        <div class="sidebar-section mb-3.5 mt-3">
+        <div class="sidebar-section mb-3.5">
           <div class="flex items-center justify-between mb-1.5">
-            <h3
-              class="text-[12px] uppercase tracking-[0.7px] text-gray-500 dark:text-brand-mid font-semibold"
+            <button
+              class="flex items-center gap-1.5 text-base font-semibold uppercase tracking-[0.5px] text-gray-500 dark:text-brand-mid hover:text-gray-700 dark:hover:text-brand-light-gray transition-colors"
+              @click="sourceSectionOpen = !sourceSectionOpen"
             >
               来源
-            </h3>
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                class="transition-transform duration-200"
+                :class="sourceSectionOpen ? 'rotate-180' : ''"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
             <button
-              class="w-5 h-5 flex items-center justify-center rounded text-gray-400 dark:text-gray-500 hover:text-accent dark:hover:text-accent hover:bg-accent/10 transition-colors"
+              class="w-6 h-6 flex items-center justify-center rounded text-gray-400 dark:text-gray-500 hover:text-accent dark:hover:text-accent hover:bg-accent/10 transition-colors"
               title="新建来源"
               @click="startAddSource()"
             >
               <svg
-                width="12"
-                height="12"
+                width="16"
+                height="16"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -338,57 +402,187 @@ function cancelAddSource() {
             </button>
           </div>
 
-          <!-- Inline input for new source -->
-          <div v-if="addingSource" class="flex items-center gap-1 mb-1.5">
-            <input
-              ref="newSourceInput"
-              v-model="newSourceName"
-              type="text"
-              class="flex-1 text-[12px] px-2 py-1 rounded-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
-              placeholder="新来源名称"
-              @keydown.enter="confirmAddSource()"
-              @keydown.escape="cancelAddSource()"
-            />
-            <button
-              class="text-[11px] px-1.5 py-1 rounded bg-accent text-white hover:bg-accent/90 transition-colors flex-shrink-0"
-              @click="confirmAddSource()"
-            >
-              确定
-            </button>
-            <button
-              class="text-[11px] px-1.5 py-1 rounded border border-gray-200 dark:border-[#2e2e2c] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a28] transition-colors flex-shrink-0"
-              @click="cancelAddSource()"
-            >
-              取消
-            </button>
-          </div>
+          <div class="section-collapse" :class="{ active: sourceSectionOpen }">
+            <div class="section-collapse-inner">
+              <!-- Inline input for new source -->
+              <div v-if="addingSource" class="flex items-center mb-1.5">
+                <input
+                  ref="newSourceInput"
+                  v-model="newSourceName"
+                  type="text"
+                  class="flex-1 min-w-0 text-sm px-3 py-1.5 rounded-l-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+                  placeholder="新来源名称"
+                  @keydown.enter="confirmAddSource()"
+                  @keydown.escape="cancelAddSource()"
+                />
+                <button
+                  class="text-xs px-2 py-1.5 border border-l-0 border-accent bg-accent text-white hover:brightness-110 transition-colors flex-shrink-0"
+                  @click="confirmAddSource()"
+                >
+                  确定
+                </button>
+                <button
+                  class="text-xs px-2 py-1.5 rounded-r-md border border-l-0 border-gray-200 dark:border-[#2e2e2c] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a28] transition-colors flex-shrink-0"
+                  @click="cancelAddSource()"
+                >
+                  取消
+                </button>
+              </div>
 
-          <div class="flex flex-wrap gap-1">
-            <template v-if="allSources.length === 0">
-              <span class="text-[12px] text-gray-500 dark:text-brand-mid">暂无来源</span>
-            </template>
-            <button
-              v-for="source in allSources"
-              :key="source"
-              class="source-chip text-[12px] px-2 py-0.5 rounded-md bg-brand-light-gray dark:bg-[#2a2a28] text-brand-mid dark:text-brand-mid cursor-pointer border-none transition-all duration-200 ease-out active:scale-95 hover:bg-accent-light hover:text-accent"
-              :class="{ '!bg-accent !text-white': activeSource === source }"
-              @click="emit('filterSource', activeSource === source ? null : source)"
-            >
-              {{ source }} ({{ sourceMap[source] || 0 }})
-            </button>
+              <div class="flex flex-wrap gap-1">
+                <template v-if="allSources.length === 0">
+                  <span class="text-xs text-gray-500 dark:text-brand-mid">暂无来源</span>
+                </template>
+                <template v-for="source in allSources" :key="source">
+                  <!-- Inline edit mode -->
+                  <span v-if="editingSource === source" class="inline-flex items-center gap-1">
+                    <input
+                      :ref="(el) => (editSourceInput = el as HTMLInputElement | null)"
+                      v-model="editSourceValue"
+                      type="text"
+                      class="text-sm px-3 py-1.5 rounded-md border border-accent bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light w-28 focus:ring-2 focus:ring-accent/20 transition-all"
+                      @keydown.enter="confirmEditSource()"
+                      @keydown.escape="cancelEditSource()"
+                    />
+                    <button
+                      class="text-xs px-1.5 py-1.5 rounded bg-accent text-white hover:bg-accent/90 transition-colors flex-shrink-0"
+                      @click="confirmEditSource()"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </button>
+                    <button
+                      class="text-xs px-1.5 py-1.5 rounded border border-gray-200 dark:border-[#2e2e2c] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a28] transition-colors flex-shrink-0"
+                      @click="cancelEditSource()"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3"
+                      >
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </span>
+
+                  <!-- Delete confirmation -->
+                  <span
+                    v-else-if="deletingSource === source"
+                    class="inline-flex items-center gap-1"
+                  >
+                    <span class="text-xs text-red-500 dark:text-red-400 px-1"
+                      >删除 "{{ source }}" ({{ sourceMap[source] || 0 }} 条)?</span
+                    >
+                    <button
+                      class="text-xs px-1.5 py-1.5 rounded bg-red-500 text-white hover:bg-red-600 transition-colors flex-shrink-0"
+                      @click="confirmDeleteSource()"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </button>
+                    <button
+                      class="text-xs px-1.5 py-1.5 rounded border border-gray-200 dark:border-[#2e2e2c] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a28] transition-colors flex-shrink-0"
+                      @click="cancelDeleteSource()"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3"
+                      >
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </span>
+
+                  <!-- Normal chip: parent = clip only; left filled, right ghost -->
+                  <span
+                    v-else
+                    class="inline-flex items-center rounded-md overflow-hidden group transition-all duration-200 ease-out"
+                  >
+                    <button
+                      class="source-chip text-sm px-2.5 py-1 cursor-pointer border-none transition-all duration-200 ease-out active:scale-95 bg-brand-light-gray dark:bg-[#2a2a28] text-brand-mid dark:text-brand-mid hover:brightness-90"
+                      :class="{ '!bg-accent !text-white': activeSource === source }"
+                      @click="emit('filterSource', activeSource === source ? null : source)"
+                    >
+                      {{ source }} ({{ sourceMap[source] || 0 }})
+                    </button>
+                    <button
+                      class="py-1 border-none bg-transparent transition-all duration-300 ease-out opacity-0 group-hover:opacity-100 max-w-0 group-hover:max-w-[36px] overflow-hidden px-0 group-hover:px-1.5 text-gray-400 dark:text-brand-mid hover:bg-black/5 dark:hover:bg-white/10 hover:text-accent"
+                      title="重命名来源"
+                      @click.stop="startEditSource(source)"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.5"
+                        class="flex-shrink-0"
+                      >
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                    <button
+                      class="py-1 border-none bg-transparent transition-all duration-300 ease-out opacity-0 group-hover:opacity-100 max-w-0 group-hover:max-w-[36px] overflow-hidden px-0 group-hover:px-1.5 text-gray-400 dark:text-brand-mid hover:bg-red-50 dark:hover:bg-red-950/50 hover:text-red-500"
+                      title="删除来源"
+                      @click.stop="startDeleteSource(source)"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.5"
+                        class="flex-shrink-0"
+                      >
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </span>
+                </template>
+              </div>
+            </div>
           </div>
         </div>
 
         <!-- Mastery filter -->
         <div class="mt-3">
           <button
-            class="flex items-center gap-1.5 text-[12px] text-brand-mid dark:text-brand-mid font-semibold uppercase tracking-[0.5px] hover:text-brand-dark dark:hover:text-brand-light-gray transition-colors"
+            class="flex items-center gap-1.5 text-base font-semibold uppercase tracking-[0.5px] text-gray-500 dark:text-brand-mid hover:text-gray-700 dark:hover:text-brand-light-gray transition-colors"
             @click="masteryOpen = !masteryOpen"
           >
             掌握程度
             <svg
-              width="10"
-              height="10"
+              width="13"
+              height="13"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -399,43 +593,45 @@ function cancelAddSource() {
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
-          <Transition name="mastery">
-            <div v-show="masteryOpen" class="flex flex-wrap gap-1.5 mt-2 overflow-hidden">
-              <button
-                v-for="b in MASTERY_LEVEL_DEFS"
-                :key="b.label"
-                class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-medium transition-all duration-200 ease-out active:scale-95"
-                :class="
-                  activeMastery === b.label
-                    ? 'text-white shadow-sm'
-                    : 'bg-brand-light-gray dark:bg-[#2a2a28] text-brand-dark dark:text-brand-light-gray hover:ring-1'
-                "
-                :style="{
-                  backgroundColor: activeMastery === b.label ? b.color : undefined,
-                  ['--ring-color' as any]: b.color,
-                }"
-                @mouseenter="
-                  (e: MouseEvent) => {
-                    if (activeMastery !== b.label)
-                      (e.target as HTMLElement).style.boxShadow = `0 0 0 1px ${b.color}40`
-                  }
-                "
-                @mouseleave="
-                  (e: MouseEvent) => {
-                    if (activeMastery !== b.label) (e.target as HTMLElement).style.boxShadow = ''
-                  }
-                "
-                @click="emit('filterMastery', b.label)"
-              >
-                <span
-                  class="w-1.5 h-1.5 rounded-full flex-shrink-0 transition-all duration-200"
-                  :class="activeMastery === b.label ? 'bg-white' : ''"
-                  :style="{ backgroundColor: activeMastery === b.label ? undefined : b.color }"
-                />
-                {{ b.label }} ({{ masteryMap[b.label] || 0 }})
-              </button>
+          <div class="section-collapse mt-2" :class="{ active: masteryOpen }">
+            <div class="section-collapse-inner">
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="b in MASTERY_LEVEL_DEFS"
+                  :key="b.label"
+                  class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-medium transition-all duration-200 ease-out active:scale-95"
+                  :class="
+                    activeMastery === b.label
+                      ? 'text-white shadow-sm'
+                      : 'bg-brand-light-gray dark:bg-[#2a2a28] text-brand-dark dark:text-brand-light-gray hover:ring-1'
+                  "
+                  :style="{
+                    backgroundColor: activeMastery === b.label ? b.color : undefined,
+                    ['--ring-color' as any]: b.color,
+                  }"
+                  @mouseenter="
+                    (e: MouseEvent) => {
+                      if (activeMastery !== b.label)
+                        (e.target as HTMLElement).style.boxShadow = `0 0 0 1px ${b.color}40`
+                    }
+                  "
+                  @mouseleave="
+                    (e: MouseEvent) => {
+                      if (activeMastery !== b.label) (e.target as HTMLElement).style.boxShadow = ''
+                    }
+                  "
+                  @click="emit('filterMastery', b.label)"
+                >
+                  <span
+                    class="w-1.5 h-1.5 rounded-full flex-shrink-0 transition-all duration-200"
+                    :class="activeMastery === b.label ? 'bg-white' : ''"
+                    :style="{ backgroundColor: activeMastery === b.label ? undefined : b.color }"
+                  />
+                  {{ b.label }} ({{ masteryMap[b.label] || 0 }})
+                </button>
+              </div>
             </div>
-          </Transition>
+          </div>
         </div>
       </div>
 

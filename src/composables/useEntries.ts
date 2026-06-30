@@ -142,6 +142,92 @@ export function useEntries() {
     deselectAll()
   }
 
+  // Rename subject across all entries
+  async function renameSubjectInEntries(oldName: string, newName: string) {
+    const now = Date.now()
+    const targets = entries.value.filter((e) => e.subject === oldName)
+    if (targets.length === 0) return
+    await Promise.all(
+      targets.map((e) => db.put(toPlain({ ...e, subject: newName, updatedAt: now }))),
+    )
+    for (const e of targets) {
+      e.subject = newName
+      e.updatedAt = now
+    }
+  }
+
+  // Rename tag across all entries
+  async function renameTagInEntries(oldName: string, newName: string) {
+    const now = Date.now()
+    const targets = entries.value.filter((e) => e.tags && e.tags.includes(oldName))
+    if (targets.length === 0) return
+    await Promise.all(
+      targets.map((e) => {
+        const newTags = e.tags.map((t) => (t === oldName ? newName : t))
+        return db.put(toPlain({ ...e, tags: newTags, updatedAt: now }))
+      }),
+    )
+    for (const e of targets) {
+      e.tags = e.tags.map((t) => (t === oldName ? newName : t))
+      e.updatedAt = now
+    }
+  }
+
+  // Rename source across all entries
+  async function renameSourceInEntries(oldName: string, newName: string) {
+    const now = Date.now()
+    const targets = entries.value.filter((e) => e.source === oldName)
+    if (targets.length === 0) return
+    await Promise.all(
+      targets.map((e) => db.put(toPlain({ ...e, source: newName, updatedAt: now }))),
+    )
+    for (const e of targets) {
+      e.source = newName
+      e.updatedAt = now
+    }
+  }
+
+  // Remove subject from all entries that use it
+  async function removeSubjectFromEntries(name: string) {
+    const now = Date.now()
+    const targets = entries.value.filter((e) => e.subject === name)
+    if (targets.length === 0) return
+    await Promise.all(targets.map((e) => db.put(toPlain({ ...e, subject: '', updatedAt: now }))))
+    for (const e of targets) {
+      e.subject = ''
+      e.updatedAt = now
+    }
+  }
+
+  // Remove tag from all entries that use it
+  async function removeTagFromEntries(name: string) {
+    const now = Date.now()
+    const targets = entries.value.filter((e) => e.tags && e.tags.includes(name))
+    if (targets.length === 0) return
+    await Promise.all(
+      targets.map((e) => {
+        const newTags = e.tags.filter((t) => t !== name)
+        return db.put(toPlain({ ...e, tags: newTags, updatedAt: now }))
+      }),
+    )
+    for (const e of targets) {
+      e.tags = e.tags.filter((t) => t !== name)
+      e.updatedAt = now
+    }
+  }
+
+  // Remove source from all entries that use it
+  async function removeSourceFromEntries(name: string) {
+    const now = Date.now()
+    const targets = entries.value.filter((e) => e.source === name)
+    if (targets.length === 0) return
+    await Promise.all(targets.map((e) => db.put(toPlain({ ...e, source: '', updatedAt: now }))))
+    for (const e of targets) {
+      e.source = ''
+      e.updatedAt = now
+    }
+  }
+
   // Batch export
   function batchExport(ids: string[]) {
     const selected = entries.value.filter((e) => ids.includes(e.id))
@@ -437,6 +523,13 @@ export function useEntries() {
     batchDelete,
     batchTag,
     batchExport,
+    // entity rename/delete
+    renameSubjectInEntries,
+    renameTagInEntries,
+    renameSourceInEntries,
+    removeSubjectFromEntries,
+    removeTagFromEntries,
+    removeSourceFromEntries,
     // utility exports for components
     stripMd,
     isPlaceholderTitle,
