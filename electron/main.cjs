@@ -109,7 +109,16 @@ function getNotebooksMetaPath() {
   return path.join(getDataDir(), 'notebooks.json')
 }
 
+const VALID_ID_RE = /^[a-zA-Z0-9_-]+$/
+
+function assertSafeId(id) {
+  if (typeof id !== 'string' || !VALID_ID_RE.test(id)) {
+    throw new Error(`Invalid notebook id: ${id}`)
+  }
+}
+
 function getNotebookDataPath(notebookId) {
+  assertSafeId(notebookId)
   return path.join(getDataDir(), `notebook_${notebookId}.json`)
 }
 
