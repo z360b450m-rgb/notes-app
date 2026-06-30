@@ -44,12 +44,12 @@ function cancelAddSubject() {
 // Edit state
 const editingName = ref<string | null>(null)
 const editValue = ref('')
-const editInput: HTMLInputElement | null = null
+const editInput = ref<HTMLInputElement | null>(null)
 
 function startEdit(name: string) {
   editingName.value = name
   editValue.value = name
-  nextTick(() => editInput?.focus())
+  nextTick(() => editInput.value?.focus())
 }
 
 function confirmEdit() {
@@ -171,7 +171,7 @@ function cancelDelete() {
             <!-- Inline edit mode -->
             <span v-if="editingName === subject" class="inline-flex items-center gap-1">
               <input
-                :ref="(el) => (editInput = el as HTMLInputElement | null)"
+                :ref="(el) => (editInput.value = el as HTMLInputElement | null)"
                 v-model="editValue"
                 type="text"
                 class="text-sm px-3 py-1.5 rounded-md border border-accent bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light w-28 focus:ring-2 focus:ring-accent/20 transition-all"

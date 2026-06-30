@@ -79,13 +79,13 @@ const newSourceInput = ref<HTMLInputElement | null>(null)
 // Source edit/delete state
 const editingSource = ref<string | null>(null)
 const editSourceValue = ref('')
-const editSourceInput: HTMLInputElement | null = null
+const editSourceInput = ref<HTMLInputElement | null>(null)
 const deletingSource = ref<string | null>(null)
 
 function startEditSource(name: string) {
   editingSource.value = name
   editSourceValue.value = name
-  nextTick(() => editSourceInput?.focus())
+  nextTick(() => editSourceInput.value?.focus())
 }
 
 function confirmEditSource() {
@@ -437,7 +437,7 @@ function cancelAddSource() {
                   <!-- Inline edit mode -->
                   <span v-if="editingSource === source" class="inline-flex items-center gap-1">
                     <input
-                      :ref="(el) => (editSourceInput = el as HTMLInputElement | null)"
+                      :ref="(el) => (editSourceInput.value = el as HTMLInputElement | null)"
                       v-model="editSourceValue"
                       type="text"
                       class="text-sm px-3 py-1.5 rounded-md border border-accent bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light w-28 focus:ring-2 focus:ring-accent/20 transition-all"
