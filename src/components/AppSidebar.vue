@@ -445,8 +445,8 @@ function cancelAddSource() {
               </div>
               <div class="flex flex-wrap gap-1">
                 <button
-                  class="text-sm px-3 py-1.5 rounded-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:border-accent hover:text-accent whitespace-nowrap"
-                  :class="{ '!bg-accent !text-white !border-accent': !activeSource }"
+                  class="source-chip text-sm px-2.5 py-1 rounded-md border-none bg-brand-light-gray dark:bg-[#2a2a28] text-brand-mid dark:text-brand-mid cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:brightness-90 whitespace-nowrap"
+                  :class="{ '!bg-accent !text-white': !activeSource }"
                   @click="emit('filterSource', '__all__')"
                 >
                   全部 ({{ entries.length }})

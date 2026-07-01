@@ -166,15 +166,15 @@ function cancelDelete() {
         </div>
         <div class="flex flex-wrap gap-1">
           <button
-            class="subject-chip text-sm px-3 py-1.5 rounded-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:border-accent hover:text-accent whitespace-nowrap"
-            :class="{ '!bg-accent !text-white !border-accent': activeSubject === '__all__' }"
+            class="subject-chip text-sm px-2.5 py-1 rounded-md border-none bg-brand-light-gray dark:bg-[#2a2a28] text-brand-mid dark:text-brand-mid cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:brightness-90 whitespace-nowrap"
+            :class="{ '!bg-accent !text-white': activeSubject === '__all__' }"
             @click="emit('filter', '__all__')"
           >
             全部 ({{ allCount }})
           </button>
           <button
-            class="subject-chip text-sm px-3 py-1.5 rounded-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:border-accent hover:text-accent whitespace-nowrap"
-            :class="{ '!bg-accent !text-white !border-accent': activeSubject === '__none__' }"
+            class="subject-chip text-sm px-2.5 py-1 rounded-md border-none bg-brand-light-gray dark:bg-[#2a2a28] text-brand-mid dark:text-brand-mid cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:brightness-90 whitespace-nowrap"
+            :class="{ '!bg-accent !text-white': activeSubject === '__none__' }"
             @click="emit('filter', '__none__')"
           >
             未分类 ({{ noneCount }})
