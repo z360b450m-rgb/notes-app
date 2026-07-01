@@ -3,7 +3,8 @@
 // 禁止直接操作存储、编写业务逻辑、管理跨组件状态。
 import { ref, computed } from 'vue'
 import { useNotebooks } from '@/composables/useNotebooks'
-import { useEntries } from '@/composables/useEntries'
+import { db } from '@/services/db'
+import type { NoteEntry } from '@/types'
 import { useReviewLogs } from '@/composables/useReviewLogs'
 import { useDarkMode } from '@/composables/useDarkMode'
 import { useModalAnimations } from '@/composables/useModalAnimations'
@@ -18,14 +19,18 @@ const { isDark } = useDarkMode()
 const { enterModal, leaveModal } = useModalAnimations()
 const { notebooks, createNotebook, updateNotebook, deleteNotebook, reorderNotebooks } =
   useNotebooks()
-const { entries, loadEntries } = useEntries()
-loadEntries()
-const { reviewLogs, loadLogs } = useReviewLogs()
+// Load all entries independently — decoupled from the shared entries ref
+// which gets filtered to a single notebook during the page transition.
+const menuEntries = ref<NoteEntry[]>([])
+db.getAll(null).then((result) => {
+  menuEntries.value = result
+})
+const { reviewLogs, loadLogs } = useReviewLogs(() => '')
 loadLogs()
 
 const entryCountByNotebook = computed(() => {
   const map: Record<string, number> = {}
-  for (const e of entries.value) {
+  for (const e of menuEntries.value) {
     if (e.notebookId) map[e.notebookId] = (map[e.notebookId] || 0) + 1
   }
   return map
@@ -37,11 +42,67 @@ const totalEntries = computed(() => {
   return sum
 })
 
+// ── Review stats ──
+const todayStart = new Date()
+todayStart.setHours(0, 0, 0, 0)
+const t0 = todayStart.getTime()
+
 const reviewedToday = computed(() => {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const t0 = today.getTime()
   return reviewLogs.value.filter((l) => l.timestamp >= t0).length
+})
+
+// Entries currently still due (nextReviewDate <= now) — pending, not yet reviewed today
+const stillDue = computed(() => {
+  const now = Date.now()
+  return menuEntries.value.filter((e) => e.nextReviewDate && e.nextReviewDate <= now).length
+})
+
+const stillDueByNotebook = computed(() => {
+  const now = Date.now()
+  const map: Record<string, number> = {}
+  for (const e of menuEntries.value) {
+    if (e.nextReviewDate && e.nextReviewDate <= now && e.notebookId) {
+      map[e.notebookId] = (map[e.notebookId] || 0) + 1
+    }
+  }
+  return map
+})
+
+// Entry id → notebook id lookup for cross-referencing review logs
+const entryNotebookMap = computed(() => {
+  const map: Record<string, string> = {}
+  for (const e of menuEntries.value) {
+    map[e.id] = e.notebookId
+  }
+  return map
+})
+
+// Today's completed reviews per notebook
+const reviewedByNotebook = computed(() => {
+  const map: Record<string, number> = {}
+  for (const log of reviewLogs.value) {
+    if (log.timestamp >= t0) {
+      const nbId = entryNotebookMap.value[log.entryId]
+      if (nbId) {
+        map[nbId] = (map[nbId] || 0) + 1
+      }
+    }
+  }
+  return map
+})
+
+// Total to review today = completed + still pending (total doesn't decrease as reviews happen)
+const totalDue = computed(() => {
+  return reviewedToday.value + stillDue.value
+})
+
+// Per-notebook total to review = completed + still pending per notebook
+const dueByNotebook = computed(() => {
+  const map: Record<string, number> = {}
+  for (const nb of notebooks.value) {
+    map[nb.id] = (reviewedByNotebook.value[nb.id] || 0) + (stillDueByNotebook.value[nb.id] || 0)
+  }
+  return map
 })
 
 const dotColors = ['#d97757', '#788c5d', '#6a9bcc', '#c56a48', '#5b7a9e', '#636b4a']
@@ -319,9 +380,11 @@ function onNotebookClick(id: string) {
             <span class="flex-1 text-left truncate text-brand-dark dark:text-brand-light-gray">{{
               nb.name
             }}</span>
-            <span class="text-[11px] text-brand-mid dark:text-brand-mid tabular-nums">{{
-              entryCountByNotebook[nb.id] || 0
-            }}</span>
+            <span class="text-[11px] text-brand-mid dark:text-brand-mid tabular-nums"
+              >{{ entryCountByNotebook[nb.id] || 0 }} · {{ reviewedByNotebook[nb.id] || 0 }}/{{
+                dueByNotebook[nb.id] || 0
+              }}</span
+            >
           </button>
         </div>
 
@@ -454,9 +517,11 @@ function onNotebookClick(id: string) {
                 </svg>
               </div>
               <div class="text-[28px] font-bold text-brand-dark dark:text-brand-light leading-none">
-                {{ reviewedToday }}
+                {{ reviewedToday }}/{{ totalDue }}
               </div>
-              <div class="text-[13px] text-brand-mid dark:text-brand-mid mt-1.5">今日复习</div>
+              <div class="text-[13px] text-brand-mid dark:text-brand-mid mt-1.5">
+                今日复习（完成/需复习）
+              </div>
             </div>
           </div>
 
@@ -492,7 +557,7 @@ function onNotebookClick(id: string) {
               class="flex items-center px-5 py-3 text-[12px] font-semibold text-brand-mid dark:text-brand-mid uppercase tracking-[0.5px] border-b border-[#e8e6dc]/50 dark:border-[#2e2e2c]/50"
             >
               <span class="flex-[2]">名称</span>
-              <span class="flex-[1]">题数</span>
+              <span class="flex-[1.5]">题数 / 复习进度</span>
               <span class="flex-[1.5]">更新时间</span>
               <span class="flex-[1]">标签</span>
               <span class="flex-[1.5] text-right">操作</span>
@@ -516,9 +581,9 @@ function onNotebookClick(id: string) {
                     >{{ nb.name }}</span
                   >
                 </div>
-                <span
-                  class="flex-[1] text-[13px] text-brand-mid dark:text-brand-mid tabular-nums"
-                  >{{ entryCountByNotebook[nb.id] || 0 }}</span
+                <span class="flex-[1.5] text-[13px] text-brand-mid dark:text-brand-mid tabular-nums"
+                  >{{ entryCountByNotebook[nb.id] || 0 }} 题 ·
+                  {{ reviewedByNotebook[nb.id] || 0 }}/{{ dueByNotebook[nb.id] || 0 }}</span
                 >
                 <span class="flex-[1.5] text-[13px] text-brand-mid dark:text-brand-mid">{{
                   fmtTime(nb.updatedAt)
@@ -639,7 +704,8 @@ function onNotebookClick(id: string) {
                   nb.name
                 }}</span>
                 <span class="text-[12px] text-brand-mid dark:text-brand-mid"
-                  >{{ entryCountByNotebook[nb.id] || 0 }} 题</span
+                  >{{ entryCountByNotebook[nb.id] || 0 }} 题 ·
+                  {{ reviewedByNotebook[nb.id] || 0 }}/{{ dueByNotebook[nb.id] || 0 }}</span
                 >
                 <svg
                   width="14"

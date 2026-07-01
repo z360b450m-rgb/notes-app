@@ -11,82 +11,95 @@ export const PEN_COLORS = [
   { code: '#a855f7', name: '紫' },
 ]
 
+interface CanvasState {
+  canvas: HTMLCanvasElement
+  ctx: CanvasRenderingContext2D
+  container: HTMLElement
+  undoStack: string[]
+  redoStack: string[]
+  ro: ResizeObserver | null
+  _resizeHandler?: () => void
+}
+
 export interface DrawingState {
   drawingEnabled: Ref<boolean>
   activeTool: Ref<DrawTool>
   penColor: Ref<string>
+  penSize: Ref<number>
+  eraserSize: Ref<number>
   canUndo: Ref<boolean>
   canRedo: Ref<boolean>
   currentEntryId: Ref<string | null>
   toggleDrawing: () => void
   setTool: (t: DrawTool) => void
   setColor: (c: string) => void
+  setPenSize: (s: number) => void
+  setEraserSize: (s: number) => void
   clearCanvas: () => void
   undo: () => void
   redo: () => void
   resizeCanvas: () => void
-  loadDrawing: (entryId: string) => void
-  mountCanvas: (container: HTMLElement) => void
+  loadDrawing: (entryId: string, field: string) => void
+  mountCanvas: (container: HTMLElement, field: string) => void
+  captureDrawing: (field: string) => string | null
+  captureAllDrawings: () => Record<string, string>
+  setStoredDrawing: (entryId: string, field: string, dataUrl: string) => void
   setCanvasParent: (el: HTMLElement | null) => void
-  captureDrawing: () => string | null
-  setStoredDrawing: (entryId: string, dataUrl: string) => void
 }
 
 // ===================================================================
 // @AI-GUIDE: 画笔批注引擎 (Canvas 操作层)
-// 例外模块 —— 本 composable 是唯一允许直接操作 Canvas DOM 的业务模块。
-// 画笔/橡皮/撤销重做/颜色管理等绘图状态均在此管理。
-// 绘图数据通过 memory Map 缓存, 保存时写入 entry.drawing 字段。
-// DrawingState 返回值类型必须向后兼容。
+// 支持同时挂载多个画布 (question / wrongAnswer / correctAnswer)。
+// 共享笔刷/橡皮/颜色，每个画布独立 undo/redo。
+// 绘图数据通过 memory Map (key = entryId:field) 缓存。
 // ===================================================================
 export function useDrawing(onChange?: () => void): DrawingState {
   const drawingEnabled = ref(false)
   const activeTool = ref<DrawTool>('pen')
   const penColor = ref(PEN_COLORS[0].code)
+  const penSize = ref(3)
+  const eraserSize = ref(24)
 
-  let canvas: HTMLCanvasElement | null = null
-  let ctx: CanvasRenderingContext2D | null = null
+  const canvases = new Map<string, CanvasState>()
+  const dirtyFields = new Set<string>()
+  let activeField = ''
   let drawing = false
   let lastPos = { x: 0, y: 0 }
-  let ro: ResizeObserver | null = null
 
-  // Per-entry drawing store
+  // Per-entry+field drawing store
   const drawingStore = new Map<string, string>()
   const currentEntryId = ref<string | null>(null)
 
-  // Undo/redo history
-  const undoStack: string[] = []
-  const redoStack: string[] = []
   const MAX_HISTORY = 50
   const canUndo = ref(false)
   const canRedo = ref(false)
 
-  function updateHistoryFlags() {
-    canUndo.value = undoStack.length > 0
-    canRedo.value = redoStack.length > 0
+  function activeState(): CanvasState | undefined {
+    return canvases.get(activeField)
   }
 
-  function saveSnapshot() {
-    if (!canvas) return
-    undoStack.push(canvas.toDataURL())
-    if (undoStack.length > MAX_HISTORY) undoStack.shift()
-    redoStack.length = 0
+  function updateHistoryFlags() {
+    const s = activeState()
+    canUndo.value = s ? s.undoStack.length > 0 : false
+    canRedo.value = s ? s.redoStack.length > 0 : false
+  }
+
+  function saveSnapshot(state: CanvasState) {
+    state.undoStack.push(state.canvas.toDataURL())
+    if (state.undoStack.length > MAX_HISTORY) state.undoStack.shift()
+    state.redoStack.length = 0
     updateHistoryFlags()
   }
 
-  function restoreSnapshot(dataUrl: string): Promise<void> {
+  function restoreSnapshot(state: CanvasState, dataUrl: string): Promise<void> {
     return new Promise((resolve) => {
-      if (!canvas || !ctx) {
-        resolve()
-        return
-      }
       const img = new Image()
       img.onload = () => {
-        ctx!.save()
-        ctx!.setTransform(1, 0, 0, 1, 0, 0)
-        ctx!.clearRect(0, 0, canvas!.width, canvas!.height)
-        ctx!.drawImage(img, 0, 0)
-        ctx!.restore()
+        state.ctx.save()
+        state.ctx.setTransform(1, 0, 0, 1, 0, 0)
+        state.ctx.clearRect(0, 0, state.canvas.width, state.canvas.height)
+        state.ctx.drawImage(img, 0, 0)
+        state.ctx.restore()
         resolve()
       }
       img.onerror = () => resolve()
@@ -95,31 +108,30 @@ export function useDrawing(onChange?: () => void): DrawingState {
   }
 
   async function undo() {
-    if (undoStack.length === 0) return
-    redoStack.push(canvas!.toDataURL())
-    const prev = undoStack.pop()!
-    await restoreSnapshot(prev)
+    const s = activeState()
+    if (!s || s.undoStack.length === 0) return
+    s.redoStack.push(s.canvas.toDataURL())
+    const prev = s.undoStack.pop()!
+    await restoreSnapshot(s, prev)
     updateHistoryFlags()
     onChange?.()
   }
 
   async function redo() {
-    if (redoStack.length === 0) return
-    undoStack.push(canvas!.toDataURL())
-    const next = redoStack.pop()!
-    await restoreSnapshot(next)
+    const s = activeState()
+    if (!s || s.redoStack.length === 0) return
+    s.undoStack.push(s.canvas.toDataURL())
+    const next = s.redoStack.pop()!
+    await restoreSnapshot(s, next)
     updateHistoryFlags()
     onChange?.()
   }
 
-  function resize() {
-    if (!canvas || !ctx) return
-    const parent = canvas.parentElement
-    if (!parent) return
+  function resizeState(state: CanvasState) {
+    const { canvas, ctx, container } = state
     const dpr = window.devicePixelRatio || 1
-    // Use scroll dimensions to cover full content area (supports scrolling)
-    const w = parent.scrollWidth || parent.clientWidth
-    const h = parent.scrollHeight || parent.clientHeight
+    const w = container.scrollWidth || container.clientWidth
+    const h = container.scrollHeight || container.clientHeight
     if (w === 0 || h === 0) return
     const physicalWidth = w * dpr
     const physicalHeight = h * dpr
@@ -143,202 +155,229 @@ export function useDrawing(onChange?: () => void): DrawingState {
     }
   }
 
-  function getPos(e: MouseEvent | Touch): { x: number; y: number } {
-    if (!canvas) return { x: 0, y: 0 }
-    const r = canvas.getBoundingClientRect()
+  function getPos(state: CanvasState, e: MouseEvent | Touch): { x: number; y: number } {
+    const r = state.canvas.getBoundingClientRect()
     return { x: e.clientX - r.left, y: e.clientY - r.top }
   }
 
-  function onStart(e: MouseEvent | Touch) {
-    if (!ctx) return
-    saveSnapshot()
+  function onStart(state: CanvasState, e: MouseEvent | Touch) {
+    saveSnapshot(state)
     drawing = true
-    const { x, y } = getPos(e)
+    for (const [k, v] of canvases) {
+      if (v === state) {
+        activeField = k
+        dirtyFields.add(k)
+        break
+      }
+    }
+    updateHistoryFlags()
+    const { x, y } = getPos(state, e)
     lastPos = { x, y }
-    ctx.beginPath()
-    ctx.moveTo(x, y)
+    state.ctx.beginPath()
+    state.ctx.moveTo(x, y)
 
     if (activeTool.value === 'pen') {
-      ctx.strokeStyle = penColor.value
-      ctx.lineWidth = 3
-      ctx.lineCap = 'round'
-      ctx.lineJoin = 'round'
-      ctx.globalCompositeOperation = 'source-over'
-      ctx.shadowBlur = 1
-      ctx.shadowColor = penColor.value
+      state.ctx.strokeStyle = penColor.value
+      state.ctx.lineWidth = penSize.value
+      state.ctx.lineCap = 'round'
+      state.ctx.lineJoin = 'round'
+      state.ctx.globalCompositeOperation = 'source-over'
+      state.ctx.shadowBlur = 1
+      state.ctx.shadowColor = penColor.value
     } else {
-      ctx.lineWidth = 24
-      ctx.lineCap = 'round'
-      ctx.lineJoin = 'round'
-      ctx.globalCompositeOperation = 'destination-out'
-      ctx.shadowBlur = 0
+      state.ctx.lineWidth = eraserSize.value
+      state.ctx.lineCap = 'round'
+      state.ctx.lineJoin = 'round'
+      state.ctx.globalCompositeOperation = 'destination-out'
+      state.ctx.shadowBlur = 0
     }
   }
 
-  function onMove(e: MouseEvent | Touch) {
-    if (!drawing || !ctx) return
-    const { x, y } = getPos(e)
+  function onMove(state: CanvasState, e: MouseEvent | Touch) {
+    if (!drawing) return
+    const { x, y } = getPos(state, e)
     const midX = lastPos.x + (x - lastPos.x) / 2
     const midY = lastPos.y + (y - lastPos.y) / 2
-    ctx.quadraticCurveTo(lastPos.x, lastPos.y, midX, midY)
-    ctx.stroke()
-    ctx.beginPath()
-    ctx.moveTo(midX, midY)
+    state.ctx.quadraticCurveTo(lastPos.x, lastPos.y, midX, midY)
+    state.ctx.stroke()
+    state.ctx.beginPath()
+    state.ctx.moveTo(midX, midY)
     lastPos = { x, y }
   }
 
   function onEnd() {
     if (!drawing) return
     drawing = false
-    if (ctx) ctx.closePath()
+    const s = activeState()
+    if (s) s.ctx.closePath()
     onChange?.()
   }
 
-  function onMouseDown(e: MouseEvent) {
-    e.preventDefault()
-    onStart(e)
-  }
-  function onMouseMove(e: MouseEvent) {
-    onMove(e)
-  }
-  function onMouseUp() {
-    onEnd()
-  }
-  function onTouchStart(e: TouchEvent) {
-    if (e.touches.length === 1) {
-      e.preventDefault()
-      onStart(e.touches[0])
+  function createEventHandlers(state: CanvasState) {
+    return {
+      onMouseDown(e: MouseEvent) {
+        e.preventDefault()
+        onStart(state, e)
+      },
+      onMouseMove(e: MouseEvent) {
+        onMove(state, e)
+      },
+      onMouseUp() {
+        onEnd()
+      },
+      onTouchStart(e: TouchEvent) {
+        if (e.touches.length === 1) {
+          e.preventDefault()
+          onStart(state, e.touches[0])
+        }
+      },
+      onTouchMove(e: TouchEvent) {
+        if (e.touches.length === 1) {
+          e.preventDefault()
+          onMove(state, e.touches[0])
+        }
+      },
+      onTouchEnd() {
+        onEnd()
+      },
     }
-  }
-  function onTouchMove(e: TouchEvent) {
-    if (e.touches.length === 1) {
-      e.preventDefault()
-      onMove(e.touches[0])
-    }
-  }
-  function onTouchEnd() {
-    onEnd()
   }
 
-  function mountCanvas(container: HTMLElement) {
-    // Save current canvas content before teardown
-    let savedImage: HTMLCanvasElement | null = null
-    if (canvas && canvas.width > 0 && canvas.height > 0) {
-      savedImage = document.createElement('canvas')
-      savedImage.width = canvas.width
-      savedImage.height = canvas.height
-      const savedCtx = savedImage.getContext('2d')
-      if (savedCtx) savedCtx.drawImage(canvas, 0, 0)
-    }
+  function mountCanvas(container: HTMLElement, field: string) {
+    // Unmount existing canvas for this field if any
+    unmountField(field)
 
-    // Clean up old canvas
-    if (canvas && canvas.parentElement) {
-      canvas.parentElement.removeChild(canvas)
-      window.removeEventListener('resize', resize)
-      if (ro) ro.disconnect()
-    }
-
-    canvas = document.createElement('canvas')
+    const canvas = document.createElement('canvas')
     canvas.style.position = 'absolute'
     canvas.style.top = '0'
     canvas.style.left = '0'
     canvas.style.pointerEvents = drawingEnabled.value ? 'auto' : 'none'
     canvas.style.zIndex = '10'
-    ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d')!
 
     container.classList.add('relative')
     container.appendChild(canvas)
 
-    canvas.addEventListener('mousedown', onMouseDown)
-    canvas.addEventListener('mousemove', onMouseMove)
-    canvas.addEventListener('mouseup', onMouseUp)
-    canvas.addEventListener('mouseleave', onMouseUp)
-    canvas.addEventListener('touchstart', onTouchStart, { passive: false })
-    canvas.addEventListener('touchmove', onTouchMove, { passive: false })
-    canvas.addEventListener('touchend', onTouchEnd)
-
-    resize()
-    window.addEventListener('resize', resize)
-
-    ro = new ResizeObserver(() => resize())
-    ro.observe(container)
-
-    // Restore saved content onto the new canvas
-    if (savedImage && savedImage.width > 0 && savedImage.height > 0 && ctx) {
-      ctx.save()
-      ctx.setTransform(1, 0, 0, 1, 0, 0)
-      ctx.drawImage(savedImage, 0, 0)
-      ctx.restore()
+    const state: CanvasState = {
+      canvas,
+      ctx,
+      container,
+      undoStack: [],
+      redoStack: [],
+      ro: null,
     }
+
+    const h = createEventHandlers(state)
+    canvas.addEventListener('mousedown', h.onMouseDown)
+    canvas.addEventListener('mousemove', h.onMouseMove)
+    canvas.addEventListener('mouseup', h.onMouseUp)
+    canvas.addEventListener('mouseleave', h.onMouseUp)
+    canvas.addEventListener('touchstart', h.onTouchStart, { passive: false })
+    canvas.addEventListener('touchmove', h.onTouchMove, { passive: false })
+    canvas.addEventListener('touchend', h.onTouchEnd)
+
+    resizeState(state)
+
+    const handleResize = () => resizeState(state)
+    state._resizeHandler = handleResize
+    window.addEventListener('resize', handleResize)
+
+    state.ro = new ResizeObserver(() => resizeState(state))
+    state.ro.observe(container)
+
+    canvases.set(field, state)
+    if (!activeField) activeField = field
   }
 
-  function setCanvasParent(el: HTMLElement | null) {
-    if (!canvas || !el) return
-    const computed = getComputedStyle(el)
-    if (computed.position === 'static') {
-      el.style.position = 'relative'
+  function unmountField(field: string) {
+    const existing = canvases.get(field)
+    if (existing) {
+      existing.canvas.remove()
+      if (existing._resizeHandler) {
+        window.removeEventListener('resize', existing._resizeHandler)
+      }
+      if (existing.ro) existing.ro.disconnect()
     }
-    el.appendChild(canvas)
-    resize()
+    canvases.delete(field)
+    if (activeField === field) {
+      activeField = canvases.keys().next().value || ''
+    }
+    updateHistoryFlags()
   }
 
-  function loadDrawing(entryId: string) {
-    if (!canvas) return
-    if (currentEntryId.value === entryId) return
+  function setCanvasParent(_el: HTMLElement | null) {
+    // no-op: multi-canvas mode doesn't reparent
+  }
 
-    // Save current drawing for the entry we're leaving
-    if (currentEntryId.value) {
-      drawingStore.set(currentEntryId.value, canvas.toDataURL())
+  function loadDrawing(entryId: string, field: string) {
+    const state = canvases.get(field)
+    if (!state) return
+
+    if (currentEntryId.value !== entryId) {
+      dirtyFields.clear()
     }
-
     currentEntryId.value = entryId
 
-    // Reset undo/redo for the new entry
-    undoStack.length = 0
-    redoStack.length = 0
-    updateHistoryFlags()
+    const key = `${entryId}:${field}`
 
-    // Restore saved drawing or start blank — clear synchronously first to avoid
-    // flashing the previous entry's drawing before the async image load completes.
-    if (ctx) {
-      const dpr = window.devicePixelRatio || 1
-      ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
-    }
-    if (drawingStore.has(entryId)) {
-      restoreSnapshot(drawingStore.get(entryId)!)
+    // Reset undo/redo for this field
+    state.undoStack.length = 0
+    state.redoStack.length = 0
+    if (activeField === field) updateHistoryFlags()
+
+    // Clear canvas
+    const dpr = window.devicePixelRatio || 1
+    state.ctx.clearRect(0, 0, state.canvas.width / dpr, state.canvas.height / dpr)
+
+    if (drawingStore.has(key)) {
+      restoreSnapshot(state, drawingStore.get(key)!)
+      dirtyFields.add(field)
     }
   }
 
   function resizeCanvas() {
-    resize()
+    canvases.forEach((state) => resizeState(state))
   }
 
   function clearCanvas() {
-    if (!canvas || !ctx) return
-    saveSnapshot()
+    const s = activeState()
+    if (!s) return
+    saveSnapshot(s)
     const dpr = window.devicePixelRatio || 1
-    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr)
+    s.ctx.clearRect(0, 0, s.canvas.width / dpr, s.canvas.height / dpr)
+    dirtyFields.delete(activeField)
     onChange?.()
   }
 
-  function captureDrawing(): string | null {
-    if (!canvas || canvas.width === 0 || canvas.height === 0) return null
-    return canvas.toDataURL()
+  function captureDrawing(field: string): string | null {
+    if (!dirtyFields.has(field)) return null
+    const state = canvases.get(field)
+    if (!state || state.canvas.width === 0 || state.canvas.height === 0) return null
+    return state.canvas.toDataURL()
   }
 
-  function setStoredDrawing(entryId: string, dataUrl: string) {
-    drawingStore.set(entryId, dataUrl)
+  function captureAllDrawings(): Record<string, string> {
+    const result: Record<string, string> = {}
+    dirtyFields.forEach((field) => {
+      const state = canvases.get(field)
+      if (state && state.canvas.width > 0 && state.canvas.height > 0) {
+        result[field] = state.canvas.toDataURL()
+      }
+    })
+    return result
+  }
+
+  function setStoredDrawing(entryId: string, field: string, dataUrl: string) {
+    drawingStore.set(`${entryId}:${field}`, dataUrl)
   }
 
   function toggleDrawing() {
     drawingEnabled.value = !drawingEnabled.value
-    if (!drawingEnabled.value && canvas) {
-      canvas.style.pointerEvents = 'none'
-    } else if (drawingEnabled.value && canvas) {
-      canvas.style.pointerEvents = 'auto'
-      resize()
-    }
-    // Reset to pen on open
+    const ptr = drawingEnabled.value ? 'auto' : 'none'
+    canvases.forEach((s) => {
+      s.canvas.style.pointerEvents = ptr
+      if (drawingEnabled.value) resizeState(s)
+    })
     if (drawingEnabled.value) {
       activeTool.value = 'pen'
     }
@@ -351,38 +390,47 @@ export function useDrawing(onChange?: () => void): DrawingState {
     penColor.value = c
     activeTool.value = 'pen'
   }
+  function setPenSize(s: number) {
+    penSize.value = s
+  }
+  function setEraserSize(s: number) {
+    eraserSize.value = s
+  }
 
   onUnmounted(() => {
-    window.removeEventListener('resize', resize)
-    if (canvas) {
-      canvas.removeEventListener('mousedown', onMouseDown)
-      canvas.removeEventListener('mousemove', onMouseMove)
-      canvas.removeEventListener('mouseup', onMouseUp)
-      canvas.removeEventListener('mouseleave', onMouseUp)
-      canvas.removeEventListener('touchstart', onTouchStart)
-      canvas.removeEventListener('touchmove', onTouchMove)
-      canvas.removeEventListener('touchend', onTouchEnd)
-    }
+    canvases.forEach((state) => {
+      state.canvas.remove()
+      if (state._resizeHandler) {
+        window.removeEventListener('resize', state._resizeHandler)
+      }
+      if (state.ro) state.ro.disconnect()
+    })
+    canvases.clear()
   })
 
   return {
     drawingEnabled,
     activeTool,
     penColor,
+    penSize,
+    eraserSize,
     canUndo,
     canRedo,
     currentEntryId,
     toggleDrawing,
     setTool,
     setColor,
+    setPenSize,
+    setEraserSize,
     clearCanvas,
     undo,
     redo,
     resizeCanvas,
     loadDrawing,
     mountCanvas,
-    setCanvasParent,
     captureDrawing,
+    captureAllDrawings,
     setStoredDrawing,
+    setCanvasParent,
   }
 }

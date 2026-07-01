@@ -50,9 +50,9 @@ const emit = defineEmits<{
   'range-select': [ids: string[], fromIdx: number, toIdx: number]
   'select-all': [ids: string[]]
   'deselect-all': []
-  'add-subject': [name: string]
-  'add-tag': [name: string]
-  'add-source': [name: string]
+  'add-subject': [name: string, global?: boolean]
+  'add-tag': [name: string, global?: boolean]
+  'add-source': [name: string, global?: boolean]
   'rename-subject': [oldName: string, newName: string]
   'delete-subject': [name: string]
   'rename-tag': [oldName: string, newName: string]
@@ -74,18 +74,19 @@ const batchSelectedTags = ref<string[]>([])
 const sourceSectionOpen = ref(true)
 const addingSource = ref(false)
 const newSourceName = ref('')
+const newSourceGlobal = ref(false)
 const newSourceInput = ref<HTMLInputElement | null>(null)
 
 // Source edit/delete state
 const editingSource = ref<string | null>(null)
 const editSourceValue = ref('')
-const editSourceInput: HTMLInputElement | null = null
+const editSourceInput = ref<HTMLInputElement | null>(null)
 const deletingSource = ref<string | null>(null)
 
 function startEditSource(name: string) {
   editingSource.value = name
   editSourceValue.value = name
-  nextTick(() => editSourceInput?.focus())
+  nextTick(() => editSourceInput.value?.focus())
 }
 
 function confirmEditSource() {
@@ -179,12 +180,13 @@ function startAddSource() {
   sourceSectionOpen.value = true
   addingSource.value = true
   newSourceName.value = ''
+  newSourceGlobal.value = false
   nextTick(() => newSourceInput.value?.focus())
 }
 
 function confirmAddSource() {
   const name = newSourceName.value.trim()
-  if (name) emit('add-source', name)
+  if (name) emit('add-source', name, newSourceGlobal.value)
   addingSource.value = false
 }
 
@@ -346,7 +348,7 @@ function cancelAddSource() {
           :none-count="entries.filter((e) => !e.subject).length"
           @filter="emit('filterSubject', $event)"
           @quick-create="emit('quickCreate', $event)"
-          @add-subject="(name) => emit('add-subject', name)"
+          @add-subject="(name, global) => emit('add-subject', name, global)"
           @rename-subject="(oldName, newName) => emit('rename-subject', oldName, newName)"
           @delete-subject="(name) => emit('delete-subject', name)"
         />
@@ -356,8 +358,9 @@ function cancelAddSource() {
           :active-tag="activeTag"
           :tag-map="tagMap"
           :all-tags="allTags"
+          :all-count="entries.length"
           @filter="emit('filterTag', $event)"
-          @add-tag="(name) => emit('add-tag', name)"
+          @add-tag="(name, global) => emit('add-tag', name, global)"
           @rename-tag="(oldName, newName) => emit('rename-tag', oldName, newName)"
           @delete-tag="(name) => emit('delete-tag', name)"
         />
@@ -405,31 +408,49 @@ function cancelAddSource() {
           <div class="section-collapse" :class="{ active: sourceSectionOpen }">
             <div class="section-collapse-inner">
               <!-- Inline input for new source -->
-              <div v-if="addingSource" class="flex items-center mb-1.5">
+              <div v-if="addingSource" class="mb-1.5 space-y-1.5">
                 <input
                   ref="newSourceInput"
                   v-model="newSourceName"
                   type="text"
-                  class="flex-1 min-w-0 text-sm px-3 py-1.5 rounded-l-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+                  class="w-full text-sm px-3 py-1.5 rounded-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
                   placeholder="新来源名称"
                   @keydown.enter="confirmAddSource()"
                   @keydown.escape="cancelAddSource()"
                 />
-                <button
-                  class="text-xs px-2 py-1.5 border border-l-0 border-accent bg-accent text-white hover:brightness-110 transition-colors flex-shrink-0"
-                  @click="confirmAddSource()"
+                <div class="flex items-center justify-end gap-1">
+                  <button
+                    class="text-xs px-2 py-1.5 rounded-l-md border border-accent bg-accent text-white hover:brightness-110 transition-colors flex-shrink-0"
+                    @click="confirmAddSource()"
+                  >
+                    确定
+                  </button>
+                  <button
+                    class="text-xs px-2 py-1.5 rounded-r-md border border-l-0 border-gray-200 dark:border-[#2e2e2c] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a28] transition-colors flex-shrink-0"
+                    @click="cancelAddSource()"
+                  >
+                    取消
+                  </button>
+                </div>
+                <label
+                  class="flex items-center gap-1 text-xs text-gray-500 dark:text-brand-mid cursor-pointer select-none"
                 >
-                  确定
-                </button>
-                <button
-                  class="text-xs px-2 py-1.5 rounded-r-md border border-l-0 border-gray-200 dark:border-[#2e2e2c] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a28] transition-colors flex-shrink-0"
-                  @click="cancelAddSource()"
-                >
-                  取消
-                </button>
+                  <input
+                    v-model="newSourceGlobal"
+                    type="checkbox"
+                    class="w-3.5 h-3.5 rounded accent-accent"
+                  />
+                  应用于所有错题本
+                </label>
               </div>
-
               <div class="flex flex-wrap gap-1">
+                <button
+                  class="source-chip text-sm px-2.5 py-1 rounded-md border border-transparent bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:border-gray-200 dark:hover:border-[#2e2e2c] hover:text-accent whitespace-nowrap"
+                  :class="{ '!bg-accent !text-white !border-accent': !activeSource }"
+                  @click="emit('filterSource', '__all__')"
+                >
+                  全部 ({{ entries.length }})
+                </button>
                 <template v-if="allSources.length === 0">
                   <span class="text-xs text-gray-500 dark:text-brand-mid">暂无来源</span>
                 </template>
@@ -437,7 +458,7 @@ function cancelAddSource() {
                   <!-- Inline edit mode -->
                   <span v-if="editingSource === source" class="inline-flex items-center gap-1">
                     <input
-                      :ref="(el) => (editSourceInput = el as HTMLInputElement | null)"
+                      :ref="(el) => (editSourceInput.value = el as HTMLInputElement | null)"
                       v-model="editSourceValue"
                       type="text"
                       class="text-sm px-3 py-1.5 rounded-md border border-accent bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light w-28 focus:ring-2 focus:ring-accent/20 transition-all"
@@ -521,17 +542,18 @@ function cancelAddSource() {
                   <!-- Normal chip: parent = clip only; left filled, right ghost -->
                   <span
                     v-else
-                    class="inline-flex items-center rounded-md overflow-hidden group transition-all duration-200 ease-out"
+                    class="inline-flex items-center rounded-md border border-transparent group-hover:border-gray-200 dark:group-hover:border-[#2e2e2c] overflow-hidden group transition-all duration-200 ease-out"
+                    :class="{ '!border-accent': activeSource === source }"
                   >
                     <button
-                      class="source-chip text-sm px-2.5 py-1 cursor-pointer border-none transition-all duration-200 ease-out active:scale-95 bg-brand-light-gray dark:bg-[#2a2a28] text-brand-mid dark:text-brand-mid hover:brightness-90"
+                      class="source-chip text-sm px-2.5 py-1 cursor-pointer border-none transition-all duration-200 ease-out active:scale-95 bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray hover:brightness-95"
                       :class="{ '!bg-accent !text-white': activeSource === source }"
                       @click="emit('filterSource', activeSource === source ? null : source)"
                     >
                       {{ source }} ({{ sourceMap[source] || 0 }})
                     </button>
                     <button
-                      class="py-1 border-none bg-transparent transition-all duration-300 ease-out opacity-0 group-hover:opacity-100 max-w-0 group-hover:max-w-[36px] overflow-hidden px-0 group-hover:px-1.5 text-gray-400 dark:text-brand-mid hover:bg-black/5 dark:hover:bg-white/10 hover:text-accent"
+                      class="py-1 border-none bg-transparent transition-opacity duration-300 ease-out opacity-0 group-hover:opacity-100 px-1.5 text-gray-400 dark:text-brand-mid hover:bg-black/5 dark:hover:bg-white/10 hover:text-accent pointer-events-none group-hover:pointer-events-auto"
                       title="重命名来源"
                       @click.stop="startEditSource(source)"
                     >
@@ -549,7 +571,7 @@ function cancelAddSource() {
                       </svg>
                     </button>
                     <button
-                      class="py-1 border-none bg-transparent transition-all duration-300 ease-out opacity-0 group-hover:opacity-100 max-w-0 group-hover:max-w-[36px] overflow-hidden px-0 group-hover:px-1.5 text-gray-400 dark:text-brand-mid hover:bg-red-50 dark:hover:bg-red-950/50 hover:text-red-500"
+                      class="py-1 border-none bg-transparent transition-opacity duration-300 ease-out opacity-0 group-hover:opacity-100 px-1.5 text-gray-400 dark:text-brand-mid hover:bg-red-50 dark:hover:bg-red-950/50 hover:text-red-500 pointer-events-none group-hover:pointer-events-auto"
                       title="删除来源"
                       @click.stop="startDeleteSource(source)"
                     >
@@ -704,7 +726,7 @@ function cancelAddSource() {
                       v-model="batchSelectedTags"
                       :all-tags="allTags"
                       placeholder="搜索或新建标签..."
-                      @add-tag="(name) => emit('add-tag', name)"
+                      @add-tag="(name, global) => emit('add-tag', name, global)"
                     />
                     <div class="flex justify-end gap-1.5 mt-2">
                       <button

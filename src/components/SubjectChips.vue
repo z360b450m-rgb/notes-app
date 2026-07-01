@@ -14,7 +14,7 @@ defineProps<{
 const emit = defineEmits<{
   filter: [subject: string]
   quickCreate: [subject: string]
-  'add-subject': [name: string]
+  'add-subject': [name: string, global?: boolean]
   'rename-subject': [oldName: string, newName: string]
   'delete-subject': [name: string]
 }>()
@@ -22,18 +22,20 @@ const emit = defineEmits<{
 const sectionOpen = ref(true)
 const addingSubject = ref(false)
 const newSubjectName = ref('')
+const newSubjectGlobal = ref(false)
 const newSubjectInput = ref<HTMLInputElement | null>(null)
 
 function startAddSubject() {
   sectionOpen.value = true
   addingSubject.value = true
   newSubjectName.value = ''
+  newSubjectGlobal.value = false
   nextTick(() => newSubjectInput.value?.focus())
 }
 
 function confirmAddSubject() {
   const name = newSubjectName.value.trim()
-  if (name) emit('add-subject', name)
+  if (name) emit('add-subject', name, newSubjectGlobal.value)
   addingSubject.value = false
 }
 
@@ -44,12 +46,12 @@ function cancelAddSubject() {
 // Edit state
 const editingName = ref<string | null>(null)
 const editValue = ref('')
-const editInput: HTMLInputElement | null = null
+const editInput = ref<HTMLInputElement | null>(null)
 
 function startEdit(name: string) {
   editingName.value = name
   editValue.value = name
-  nextTick(() => editInput?.focus())
+  nextTick(() => editInput.value?.focus())
 }
 
 function confirmEdit() {
@@ -127,40 +129,51 @@ function cancelDelete() {
     <div class="section-collapse" :class="{ active: sectionOpen }">
       <div class="section-collapse-inner">
         <!-- Inline input for new subject -->
-        <div v-if="addingSubject" class="flex items-center mb-1.5">
+        <div v-if="addingSubject" class="mb-1.5 space-y-1.5">
           <input
             ref="newSubjectInput"
             v-model="newSubjectName"
             type="text"
-            class="flex-1 min-w-0 text-sm px-3 py-1.5 rounded-l-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+            class="w-full text-sm px-3 py-1.5 rounded-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
             placeholder="新学科名称"
             @keydown.enter="confirmAddSubject()"
             @keydown.escape="cancelAddSubject()"
           />
-          <button
-            class="text-xs px-2 py-1.5 border border-l-0 border-accent bg-accent text-white hover:brightness-110 transition-colors flex-shrink-0"
-            @click="confirmAddSubject()"
+          <div class="flex items-center justify-end gap-1">
+            <button
+              class="text-xs px-2 py-1.5 rounded-l-md border border-accent bg-accent text-white hover:brightness-110 transition-colors flex-shrink-0"
+              @click="confirmAddSubject()"
+            >
+              确定
+            </button>
+            <button
+              class="text-xs px-2 py-1.5 rounded-r-md border border-l-0 border-gray-200 dark:border-[#2e2e2c] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a28] transition-colors flex-shrink-0"
+              @click="cancelAddSubject()"
+            >
+              取消
+            </button>
+          </div>
+          <label
+            class="flex items-center gap-1 text-xs text-gray-500 dark:text-brand-mid cursor-pointer select-none"
           >
-            确定
-          </button>
-          <button
-            class="text-xs px-2 py-1.5 rounded-r-md border border-l-0 border-gray-200 dark:border-[#2e2e2c] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a28] transition-colors flex-shrink-0"
-            @click="cancelAddSubject()"
-          >
-            取消
-          </button>
+            <input
+              v-model="newSubjectGlobal"
+              type="checkbox"
+              class="w-3.5 h-3.5 rounded accent-accent"
+            />
+            应用于所有错题本
+          </label>
         </div>
-
         <div class="flex flex-wrap gap-1">
           <button
-            class="subject-chip text-sm px-3 py-1.5 rounded-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:border-accent hover:text-accent whitespace-nowrap"
+            class="subject-chip text-sm px-2.5 py-1 rounded-md border border-transparent bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:border-gray-200 dark:hover:border-[#2e2e2c] hover:text-accent whitespace-nowrap"
             :class="{ '!bg-accent !text-white !border-accent': activeSubject === '__all__' }"
             @click="emit('filter', '__all__')"
           >
             全部 ({{ allCount }})
           </button>
           <button
-            class="subject-chip text-sm px-3 py-1.5 rounded-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:border-accent hover:text-accent whitespace-nowrap"
+            class="subject-chip text-sm px-2.5 py-1 rounded-md border border-transparent bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:border-gray-200 dark:hover:border-[#2e2e2c] hover:text-accent whitespace-nowrap"
             :class="{ '!bg-accent !text-white !border-accent': activeSubject === '__none__' }"
             @click="emit('filter', '__none__')"
           >
@@ -171,7 +184,7 @@ function cancelDelete() {
             <!-- Inline edit mode -->
             <span v-if="editingName === subject" class="inline-flex items-center gap-1">
               <input
-                :ref="(el) => (editInput = el as HTMLInputElement | null)"
+                :ref="(el) => (editInput.value = el as HTMLInputElement | null)"
                 v-model="editValue"
                 type="text"
                 class="text-sm px-3 py-1.5 rounded-md border border-accent bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light w-28 focus:ring-2 focus:ring-accent/20 transition-all"
@@ -249,23 +262,21 @@ function cancelDelete() {
               </button>
             </span>
 
-            <!-- Normal chip: parent = border + clip only; left filled, right ghost -->
+            <!-- Normal chip: parent = clip only; left filled, right ghost -->
             <span
               v-else
-              class="inline-flex items-center rounded-md border border-gray-200 dark:border-[#2e2e2c] overflow-hidden group transition-all duration-200 ease-out"
-              :class="{
-                '!border-accent': activeSubject === subject,
-              }"
+              class="inline-flex items-center rounded-md border border-transparent group-hover:border-gray-200 dark:group-hover:border-[#2e2e2c] overflow-hidden group transition-all duration-200 ease-out"
+              :class="{ '!border-accent': activeSubject === subject }"
             >
               <button
-                class="text-sm px-3 py-1.5 cursor-pointer transition-all duration-200 ease-out active:scale-95 whitespace-nowrap bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray hover:brightness-95"
+                class="subject-chip text-sm px-2.5 py-1 cursor-pointer border-none transition-all duration-200 ease-out active:scale-95 bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray hover:brightness-95"
                 :class="{ '!bg-accent !text-white': activeSubject === subject }"
                 @click="emit('filter', subject)"
               >
                 {{ subject }} ({{ subjectMap[subject] || 0 }})
               </button>
               <button
-                class="text-base font-bold px-2.5 py-1.5 cursor-pointer transition-all duration-200 ease-out active:scale-95 leading-tight bg-white dark:bg-[#141413] text-gray-500 dark:text-brand-light-gray hover:brightness-95"
+                class="text-sm px-1.5 py-1 border-none cursor-pointer transition-all duration-200 ease-out active:scale-95 bg-white dark:bg-[#141413] text-gray-400 dark:text-brand-mid hover:text-accent"
                 :class="{ '!bg-accent !text-white': activeSubject === subject }"
                 title="在此学科下新建错题"
                 @click.stop="emit('quickCreate', subject)"
@@ -273,7 +284,7 @@ function cancelDelete() {
                 +
               </button>
               <button
-                class="py-1.5 leading-tight bg-transparent transition-all duration-300 ease-out opacity-0 group-hover:opacity-100 max-w-0 group-hover:max-w-[36px] overflow-hidden px-0 group-hover:px-1.5 text-gray-400 dark:text-brand-mid hover:bg-black/5 dark:hover:bg-white/10 hover:text-accent"
+                class="py-1.5 leading-tight bg-transparent transition-opacity duration-300 ease-out opacity-0 group-hover:opacity-100 px-1.5 text-gray-400 dark:text-brand-mid hover:bg-black/5 dark:hover:bg-white/10 hover:text-accent pointer-events-none group-hover:pointer-events-auto"
                 title="重命名学科"
                 @click.stop="startEdit(subject)"
               >
@@ -291,7 +302,7 @@ function cancelDelete() {
                 </svg>
               </button>
               <button
-                class="py-1.5 leading-tight bg-transparent transition-all duration-300 ease-out opacity-0 group-hover:opacity-100 max-w-0 group-hover:max-w-[36px] overflow-hidden px-0 group-hover:px-1.5 text-gray-400 dark:text-brand-mid hover:bg-red-50 dark:hover:bg-red-950/50 hover:text-red-500"
+                class="py-1.5 leading-tight bg-transparent transition-opacity duration-300 ease-out opacity-0 group-hover:opacity-100 px-1.5 text-gray-400 dark:text-brand-mid hover:bg-red-50 dark:hover:bg-red-950/50 hover:text-red-500 pointer-events-none group-hover:pointer-events-auto"
                 title="删除学科"
                 @click.stop="startDelete(subject)"
               >

@@ -28,7 +28,7 @@ const emit = defineEmits<{
   startReview: [force: boolean]
   exitReview: []
   dismissSummary: []
-  'mount-canvas': [el: HTMLElement, entryId: string]
+  'mount-canvas': [el: HTMLElement, entryId: string, field: string]
 }>()
 
 const showCorrect = ref(false)
@@ -55,6 +55,8 @@ function sanitizedFallback(html: string | undefined, fallback: string): string {
   return sanitizeHtml(html || '') || fallback
 }
 const questionContentRef = ref<HTMLDivElement | null>(null)
+const wrongContentRef = ref<HTMLDivElement | null>(null)
+const correctContentRef = ref<HTMLDivElement | null>(null)
 const questionPanelEl = ref<HTMLDivElement | null>(null)
 const resizeH = ref<HTMLDivElement | null>(null)
 
@@ -111,7 +113,13 @@ watch(
     note.value = ''
     nextTick(() => {
       if (questionContentRef.value && props.entry?.id) {
-        emit('mount-canvas', questionContentRef.value, props.entry.id)
+        emit('mount-canvas', questionContentRef.value, props.entry.id, 'question')
+      }
+      if (wrongContentRef.value && props.entry?.id) {
+        emit('mount-canvas', wrongContentRef.value, props.entry.id, 'wrongAnswer')
+      }
+      if (correctContentRef.value && props.entry?.id) {
+        emit('mount-canvas', correctContentRef.value, props.entry.id, 'correctAnswer')
       }
     })
   },
@@ -376,11 +384,14 @@ function ratingColor(q: number | string): string {
             >点击查看</span
           >
         </div>
-        <div
-          v-if="!showCorrect"
-          class="flex-1 overflow-y-auto px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
-          v-html="sanitizedWrongAnswer"
-        />
+        <div v-if="!showCorrect" class="flex-1 overflow-y-auto">
+          <div ref="wrongContentRef" :style="{ position: 'relative', minHeight: '100%' }">
+            <div
+              class="px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
+              v-html="sanitizedWrongAnswer"
+            />
+          </div>
+        </div>
         <div v-else class="flex items-center justify-center py-4">
           <span class="text-sm font-medium text-red-500 dark:text-red-400">点击显示错误答案</span>
         </div>
@@ -407,11 +418,14 @@ function ratingColor(q: number | string): string {
             >点击查看</span
           >
         </div>
-        <div
-          v-if="showCorrect"
-          class="flex-1 overflow-y-auto px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
-          v-html="sanitizedCorrectAnswer"
-        />
+        <div v-if="showCorrect" class="flex-1 overflow-y-auto">
+          <div ref="correctContentRef" :style="{ position: 'relative', minHeight: '100%' }">
+            <div
+              class="px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
+              v-html="sanitizedCorrectAnswer"
+            />
+          </div>
+        </div>
         <div v-else class="flex items-center justify-center py-4">
           <span class="text-sm font-medium text-emerald-500 dark:text-emerald-400"
             >点击显示正确答案</span

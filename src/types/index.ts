@@ -53,8 +53,8 @@ export interface NoteEntry {
   interval?: number
   lastReviewDate?: number
   nextReviewDate?: number
-  // Canvas drawing (data URL)
-  drawing?: string
+  // Canvas drawings (per-field data URLs)
+  drawings?: Record<string, string>
   // 归属的知识库；未设置则默认 'notes'
   kbId?: string
 }

@@ -42,6 +42,8 @@ const props = defineProps<{
   drawingEnabled: boolean
   activeTool: string
   penColor: string
+  penSize: number
+  eraserSize: number
   canUndo: boolean
   canRedo: boolean
   showDeleteModal: boolean
@@ -115,10 +117,12 @@ const emit = defineEmits<{
   'toggle-drawing': []
   'set-tool': [tool: string]
   'set-color': [color: string]
+  'set-pen-size': [size: number]
+  'set-eraser-size': [size: number]
   'clear-canvas': []
   undo: []
   redo: []
-  'mount-canvas': [el: HTMLElement | null, entryId: string]
+  'mount-canvas': [el: HTMLElement | null, entryId: string, field: string]
 
   // Batch
   'toggle-select': [id: string]
@@ -128,9 +132,9 @@ const emit = defineEmits<{
   'batch-delete': []
   'confirm-batch-delete': []
   'cancel-batch-delete': []
-  'add-subject': [name: string]
-  'add-tag': [name: string]
-  'add-source': [name: string]
+  'add-subject': [name: string, global?: boolean]
+  'add-tag': [name: string, global?: boolean]
+  'add-source': [name: string, global?: boolean]
   'rename-subject': [oldName: string, newName: string]
   'delete-subject': [name: string]
   'rename-tag': [oldName: string, newName: string]
@@ -163,26 +167,44 @@ const emit = defineEmits<{
 
 const mainArea = ref<HTMLElement | null>(null)
 let lastWheelNav = 0
+let lastEdgeTime = 0
 
 function onWheel(e: WheelEvent) {
   if (props.mode !== 'edit' || !props.activeId) return
 
   // Only allow wheel navigation from answer panels, not question area
   const inAnswer = (e.target as HTMLElement).closest('.answer-panel')
-  if (!inAnswer) return
+  if (!inAnswer) {
+    lastEdgeTime = 0
+    return
+  }
 
   const scrollable = (e.target as HTMLElement).closest('.overflow-y-auto')
   if (scrollable) {
     const el = scrollable as HTMLElement
-    const atTop = el.scrollTop <= 1
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
-    if ((e.deltaY < 0 && !atTop) || (e.deltaY > 0 && !atBottom)) return
+    const atTop = el.scrollTop <= 0
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 5
+
+    if ((e.deltaY > 0 && atBottom) || (e.deltaY < 0 && atTop)) {
+      const now = Date.now()
+      // Arrived at edge for the first time, or continuous fast scrolling → block
+      if (lastEdgeTime === 0 || now - lastEdgeTime < 150) {
+        lastEdgeTime = now
+        return
+      }
+      // Paused > 150ms at edge then scrolled again → allow
+      lastEdgeTime = now
+    } else {
+      lastEdgeTime = 0
+      return
+    }
   }
 
   const now = Date.now()
-  if (now - lastWheelNav < 250) return
+  if (now - lastWheelNav < 600) return
   lastWheelNav = now
 
+  lastEdgeTime = 0
   emit('wheel-nav', e.deltaY > 0 ? 1 : -1)
 }
 </script>
@@ -227,9 +249,9 @@ function onWheel(e: WheelEvent) {
       @range-select="(ids, from, to) => emit('range-select', ids, from, to)"
       @select-all="(ids) => emit('select-all', ids)"
       @deselect-all="emit('deselect-all')"
-      @add-subject="(name) => emit('add-subject', name)"
-      @add-tag="(name) => emit('add-tag', name)"
-      @add-source="(name) => emit('add-source', name)"
+      @add-subject="(name, global) => emit('add-subject', name, global)"
+      @add-tag="(name, global) => emit('add-tag', name, global)"
+      @add-source="(name, global) => emit('add-source', name, global)"
       @rename-subject="(oldName, newName) => emit('rename-subject', oldName, newName)"
       @delete-subject="(name) => emit('delete-subject', name)"
       @rename-tag="(oldName, newName) => emit('rename-tag', oldName, newName)"
@@ -284,8 +306,8 @@ function onWheel(e: WheelEvent) {
             @update="emit('mark-dirty')"
             @blur-save="emit('blur-save')"
             @reveal="emit('reveal')"
-            @mount-canvas="(el, entryId) => emit('mount-canvas', el, entryId)"
-            @add-tag="(name) => emit('add-tag', name)"
+            @mount-canvas="(el, entryId, field) => emit('mount-canvas', el, entryId, field)"
+            @add-tag="(name, global) => emit('add-tag', name, global)"
           />
           <!-- <AiChatSidebar :entry="activeEntry" /> -->
         </div>
@@ -309,7 +331,7 @@ function onWheel(e: WheelEvent) {
           @start-review="(force: boolean) => emit('start-review', force)"
           @exit-review="emit('exit-review')"
           @dismiss-summary="emit('dismiss-summary')"
-          @mount-canvas="(el, entryId) => emit('mount-canvas', el, entryId)"
+          @mount-canvas="(el, entryId, field) => emit('mount-canvas', el, entryId, field)"
         />
 
         <div
@@ -408,6 +430,26 @@ function onWheel(e: WheelEvent) {
           </svg>
           橡皮
         </button>
+
+        <div class="w-px h-4 bg-gray-200" />
+        <div class="flex items-center gap-1.5">
+          <input
+            type="range"
+            :min="1"
+            :max="activeTool === 'pen' ? 12 : 48"
+            :value="activeTool === 'pen' ? penSize : eraserSize"
+            class="w-16 h-1 bg-gray-200 dark:bg-[#2e2e2c] rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent"
+            @input="
+              (e: Event) => {
+                const v = parseInt((e.target as HTMLInputElement).value)
+                activeTool === 'pen' ? emit('set-pen-size', v) : emit('set-eraser-size', v)
+              }
+            "
+          />
+          <span class="text-[11px] text-gray-400 dark:text-brand-mid w-5 text-right tabular-nums">{{
+            activeTool === 'pen' ? penSize : eraserSize
+          }}</span>
+        </div>
 
         <div class="w-px h-4 bg-gray-200" />
         <button
