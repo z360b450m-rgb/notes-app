@@ -25,12 +25,16 @@ export interface DrawingState {
   drawingEnabled: Ref<boolean>
   activeTool: Ref<DrawTool>
   penColor: Ref<string>
+  penSize: Ref<number>
+  eraserSize: Ref<number>
   canUndo: Ref<boolean>
   canRedo: Ref<boolean>
   currentEntryId: Ref<string | null>
   toggleDrawing: () => void
   setTool: (t: DrawTool) => void
   setColor: (c: string) => void
+  setPenSize: (s: number) => void
+  setEraserSize: (s: number) => void
   clearCanvas: () => void
   undo: () => void
   redo: () => void
@@ -53,6 +57,8 @@ export function useDrawing(onChange?: () => void): DrawingState {
   const drawingEnabled = ref(false)
   const activeTool = ref<DrawTool>('pen')
   const penColor = ref(PEN_COLORS[0].code)
+  const penSize = ref(3)
+  const eraserSize = ref(24)
 
   const canvases = new Map<string, CanvasState>()
   const dirtyFields = new Set<string>()
@@ -172,14 +178,14 @@ export function useDrawing(onChange?: () => void): DrawingState {
 
     if (activeTool.value === 'pen') {
       state.ctx.strokeStyle = penColor.value
-      state.ctx.lineWidth = 3
+      state.ctx.lineWidth = penSize.value
       state.ctx.lineCap = 'round'
       state.ctx.lineJoin = 'round'
       state.ctx.globalCompositeOperation = 'source-over'
       state.ctx.shadowBlur = 1
       state.ctx.shadowColor = penColor.value
     } else {
-      state.ctx.lineWidth = 24
+      state.ctx.lineWidth = eraserSize.value
       state.ctx.lineCap = 'round'
       state.ctx.lineJoin = 'round'
       state.ctx.globalCompositeOperation = 'destination-out'
@@ -384,6 +390,12 @@ export function useDrawing(onChange?: () => void): DrawingState {
     penColor.value = c
     activeTool.value = 'pen'
   }
+  function setPenSize(s: number) {
+    penSize.value = s
+  }
+  function setEraserSize(s: number) {
+    eraserSize.value = s
+  }
 
   onUnmounted(() => {
     canvases.forEach((state) => {
@@ -400,12 +412,16 @@ export function useDrawing(onChange?: () => void): DrawingState {
     drawingEnabled,
     activeTool,
     penColor,
+    penSize,
+    eraserSize,
     canUndo,
     canRedo,
     currentEntryId,
     toggleDrawing,
     setTool,
     setColor,
+    setPenSize,
+    setEraserSize,
     clearCanvas,
     undo,
     redo,

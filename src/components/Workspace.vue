@@ -42,6 +42,8 @@ const props = defineProps<{
   drawingEnabled: boolean
   activeTool: string
   penColor: string
+  penSize: number
+  eraserSize: number
   canUndo: boolean
   canRedo: boolean
   showDeleteModal: boolean
@@ -115,6 +117,8 @@ const emit = defineEmits<{
   'toggle-drawing': []
   'set-tool': [tool: string]
   'set-color': [color: string]
+  'set-pen-size': [size: number]
+  'set-eraser-size': [size: number]
   'clear-canvas': []
   undo: []
   redo: []
@@ -184,11 +188,11 @@ function onWheel(e: WheelEvent) {
     if ((e.deltaY > 0 && atBottom) || (e.deltaY < 0 && atTop)) {
       const now = Date.now()
       // Arrived at edge for the first time, or continuous fast scrolling → block
-      if (lastEdgeTime === 0 || now - lastEdgeTime < 300) {
+      if (lastEdgeTime === 0 || now - lastEdgeTime < 150) {
         lastEdgeTime = now
         return
       }
-      // Paused > 400ms at edge then scrolled again → allow
+      // Paused > 150ms at edge then scrolled again → allow
       lastEdgeTime = now
     } else {
       lastEdgeTime = 0
@@ -426,6 +430,26 @@ function onWheel(e: WheelEvent) {
           </svg>
           橡皮
         </button>
+
+        <div class="w-px h-4 bg-gray-200" />
+        <div class="flex items-center gap-1.5">
+          <input
+            type="range"
+            :min="1"
+            :max="activeTool === 'pen' ? 12 : 48"
+            :value="activeTool === 'pen' ? penSize : eraserSize"
+            class="w-16 h-1 bg-gray-200 dark:bg-[#2e2e2c] rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent"
+            @input="
+              (e: Event) => {
+                const v = parseInt((e.target as HTMLInputElement).value)
+                activeTool === 'pen' ? emit('set-pen-size', v) : emit('set-eraser-size', v)
+              }
+            "
+          />
+          <span class="text-[11px] text-gray-400 dark:text-brand-mid w-5 text-right tabular-nums">{{
+            activeTool === 'pen' ? penSize : eraserSize
+          }}</span>
+        </div>
 
         <div class="w-px h-4 bg-gray-200" />
         <button

@@ -145,12 +145,16 @@ const {
   drawingEnabled,
   activeTool,
   penColor,
+  penSize,
+  eraserSize,
   canUndo,
   canRedo,
   currentEntryId,
   toggleDrawing,
   setTool,
   setColor,
+  setPenSize,
+  setEraserSize,
   clearCanvas,
   undo,
   redo,
@@ -778,6 +782,8 @@ watch(activeId, (_newId) => {
       :drawing-enabled="drawingEnabled"
       :active-tool="activeTool"
       :pen-color="penColor"
+      :pen-size="penSize"
+      :eraser-size="eraserSize"
       :can-undo="canUndo"
       :can-redo="canRedo"
       :show-delete-modal="showDeleteModal"
@@ -831,6 +837,8 @@ watch(activeId, (_newId) => {
       @toggle-drawing="toggleDrawing"
       @set-tool="setTool"
       @set-color="setColor"
+      @set-pen-size="setPenSize"
+      @set-eraser-size="setEraserSize"
       @undo="undo"
       @redo="redo"
       @clear-canvas="clearCanvas"
