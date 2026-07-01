@@ -144,7 +144,6 @@ export function useFilter(entries: Ref<NoteEntry[]>): FilterState {
 
   function setSubject(s: string) {
     activeSubject.value = s
-    activeTag.value = null
   }
 
   function setTag(t: string) {

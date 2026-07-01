@@ -276,11 +276,12 @@ function cancelDelete() {
                 {{ subject }} ({{ subjectMap[subject] || 0 }})
               </button>
               <button
-                class="py-1 border-none bg-transparent transition-opacity duration-300 ease-out opacity-0 group-hover:opacity-100 px-1.5 text-gray-400 dark:text-brand-mid hover:bg-black/5 dark:hover:bg-white/10 hover:text-accent pointer-events-none group-hover:pointer-events-auto"
+                class="text-sm px-1.5 py-1 border-none cursor-pointer transition-all duration-200 ease-out active:scale-95 bg-white dark:bg-[#141413] text-gray-400 dark:text-brand-mid hover:text-accent"
+                :class="{ '!bg-accent !text-white': activeSubject === subject }"
                 title="在此学科下新建错题"
                 @click.stop="emit('quickCreate', subject)"
               >
-                <span class="text-sm font-bold">+</span>
+                +
               </button>
               <button
                 class="py-1.5 leading-tight bg-transparent transition-opacity duration-300 ease-out opacity-0 group-hover:opacity-100 px-1.5 text-gray-400 dark:text-brand-mid hover:bg-black/5 dark:hover:bg-white/10 hover:text-accent pointer-events-none group-hover:pointer-events-auto"
