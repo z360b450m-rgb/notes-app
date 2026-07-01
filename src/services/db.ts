@@ -51,6 +51,20 @@ export function setCurrentNotebookId(id: string) {
 
 const fileDb = {
   async getAll(notebookId: string): Promise<NoteEntry[]> {
+    // null → aggregate all notebooks; empty/falsy → fall back to current notebook
+    if (notebookId == null) {
+      const notebooks = await window.electronAPI!.getAllNotebooks()
+      const allEntries: NoteEntry[] = []
+      for (const nb of notebooks) {
+        try {
+          const entries = await window.electronAPI!.getAll(nb.id)
+          allEntries.push(...entries)
+        } catch {
+          /* skip corrupted notebook */
+        }
+      }
+      return allEntries
+    }
     return window.electronAPI!.getAll(notebookId || _notebookId)
   },
 

@@ -18,6 +18,7 @@ interface CanvasState {
   undoStack: string[]
   redoStack: string[]
   ro: ResizeObserver | null
+  _resizeHandler?: () => void
 }
 
 export interface DrawingState {
@@ -270,7 +271,10 @@ export function useDrawing(onChange?: () => void): DrawingState {
     canvas.addEventListener('touchend', h.onTouchEnd)
 
     resizeState(state)
-    window.addEventListener('resize', () => resizeState(state))
+
+    const handleResize = () => resizeState(state)
+    state._resizeHandler = handleResize
+    window.addEventListener('resize', handleResize)
 
     state.ro = new ResizeObserver(() => resizeState(state))
     state.ro.observe(container)
@@ -283,7 +287,9 @@ export function useDrawing(onChange?: () => void): DrawingState {
     const existing = canvases.get(field)
     if (existing) {
       existing.canvas.remove()
-      window.removeEventListener('resize', () => resizeState(existing))
+      if (existing._resizeHandler) {
+        window.removeEventListener('resize', existing._resizeHandler)
+      }
       if (existing.ro) existing.ro.disconnect()
     }
     canvases.delete(field)
@@ -382,10 +388,12 @@ export function useDrawing(onChange?: () => void): DrawingState {
   onUnmounted(() => {
     canvases.forEach((state) => {
       state.canvas.remove()
+      if (state._resizeHandler) {
+        window.removeEventListener('resize', state._resizeHandler)
+      }
       if (state.ro) state.ro.disconnect()
     })
     canvases.clear()
-    window.removeEventListener('resize', resizeCanvas)
   })
 
   return {

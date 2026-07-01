@@ -163,26 +163,44 @@ const emit = defineEmits<{
 
 const mainArea = ref<HTMLElement | null>(null)
 let lastWheelNav = 0
+let lastEdgeTime = 0
 
 function onWheel(e: WheelEvent) {
   if (props.mode !== 'edit' || !props.activeId) return
 
   // Only allow wheel navigation from answer panels, not question area
   const inAnswer = (e.target as HTMLElement).closest('.answer-panel')
-  if (!inAnswer) return
+  if (!inAnswer) {
+    lastEdgeTime = 0
+    return
+  }
 
   const scrollable = (e.target as HTMLElement).closest('.overflow-y-auto')
   if (scrollable) {
     const el = scrollable as HTMLElement
-    const atTop = el.scrollTop <= 1
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
-    if ((e.deltaY < 0 && !atTop) || (e.deltaY > 0 && !atBottom)) return
+    const atTop = el.scrollTop <= 0
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 5
+
+    if ((e.deltaY > 0 && atBottom) || (e.deltaY < 0 && atTop)) {
+      const now = Date.now()
+      // Arrived at edge for the first time, or continuous fast scrolling → block
+      if (lastEdgeTime === 0 || now - lastEdgeTime < 300) {
+        lastEdgeTime = now
+        return
+      }
+      // Paused > 400ms at edge then scrolled again → allow
+      lastEdgeTime = now
+    } else {
+      lastEdgeTime = 0
+      return
+    }
   }
 
   const now = Date.now()
-  if (now - lastWheelNav < 250) return
+  if (now - lastWheelNav < 600) return
   lastWheelNav = now
 
+  lastEdgeTime = 0
   emit('wheel-nav', e.deltaY > 0 ? 1 : -1)
 }
 </script>
