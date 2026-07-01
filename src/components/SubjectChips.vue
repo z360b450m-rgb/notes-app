@@ -262,28 +262,24 @@ function cancelDelete() {
               </button>
             </span>
 
-            <!-- Normal chip: parent = border + clip only; left filled, right ghost -->
+            <!-- Normal chip: parent = clip only; left filled, right ghost -->
             <span
               v-else
-              class="inline-flex items-center rounded-md border border-gray-200 dark:border-[#2e2e2c] overflow-hidden group transition-all duration-200 ease-out"
-              :class="{
-                '!border-accent': activeSubject === subject,
-              }"
+              class="inline-flex items-center rounded-md overflow-hidden group transition-all duration-200 ease-out"
             >
               <button
-                class="text-sm px-3 py-1.5 cursor-pointer transition-all duration-200 ease-out active:scale-95 whitespace-nowrap bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray hover:brightness-95"
+                class="subject-chip text-sm px-2.5 py-1 cursor-pointer border-none transition-all duration-200 ease-out active:scale-95 bg-brand-light-gray dark:bg-[#2a2a28] text-brand-mid dark:text-brand-mid hover:brightness-90"
                 :class="{ '!bg-accent !text-white': activeSubject === subject }"
                 @click="emit('filter', subject)"
               >
                 {{ subject }} ({{ subjectMap[subject] || 0 }})
               </button>
               <button
-                class="text-base font-bold px-2.5 py-1.5 cursor-pointer transition-all duration-200 ease-out active:scale-95 leading-tight bg-white dark:bg-[#141413] text-gray-500 dark:text-brand-light-gray hover:brightness-95"
-                :class="{ '!bg-accent !text-white': activeSubject === subject }"
+                class="py-1 border-none bg-transparent transition-opacity duration-300 ease-out opacity-0 group-hover:opacity-100 px-1.5 text-gray-400 dark:text-brand-mid hover:bg-black/5 dark:hover:bg-white/10 hover:text-accent pointer-events-none group-hover:pointer-events-auto"
                 title="在此学科下新建错题"
                 @click.stop="emit('quickCreate', subject)"
               >
-                +
+                <span class="text-sm font-bold">+</span>
               </button>
               <button
                 class="py-1.5 leading-tight bg-transparent transition-opacity duration-300 ease-out opacity-0 group-hover:opacity-100 px-1.5 text-gray-400 dark:text-brand-mid hover:bg-black/5 dark:hover:bg-white/10 hover:text-accent pointer-events-none group-hover:pointer-events-auto"
