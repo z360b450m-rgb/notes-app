@@ -286,7 +286,7 @@ function cancelDelete() {
                 +
               </button>
               <button
-                class="py-1.5 leading-tight bg-transparent transition-all duration-300 ease-out opacity-0 group-hover:opacity-100 max-w-0 group-hover:max-w-[36px] overflow-hidden px-0 group-hover:px-1.5 text-gray-400 dark:text-brand-mid hover:bg-black/5 dark:hover:bg-white/10 hover:text-accent"
+                class="py-1.5 leading-tight bg-transparent transition-opacity duration-300 ease-out opacity-0 group-hover:opacity-100 px-1.5 text-gray-400 dark:text-brand-mid hover:bg-black/5 dark:hover:bg-white/10 hover:text-accent pointer-events-none group-hover:pointer-events-auto"
                 title="重命名学科"
                 @click.stop="startEdit(subject)"
               >
@@ -304,7 +304,7 @@ function cancelDelete() {
                 </svg>
               </button>
               <button
-                class="py-1.5 leading-tight bg-transparent transition-all duration-300 ease-out opacity-0 group-hover:opacity-100 max-w-0 group-hover:max-w-[36px] overflow-hidden px-0 group-hover:px-1.5 text-gray-400 dark:text-brand-mid hover:bg-red-50 dark:hover:bg-red-950/50 hover:text-red-500"
+                class="py-1.5 leading-tight bg-transparent transition-opacity duration-300 ease-out opacity-0 group-hover:opacity-100 px-1.5 text-gray-400 dark:text-brand-mid hover:bg-red-50 dark:hover:bg-red-950/50 hover:text-red-500 pointer-events-none group-hover:pointer-events-auto"
                 title="删除学科"
                 @click.stop="startDelete(subject)"
               >
