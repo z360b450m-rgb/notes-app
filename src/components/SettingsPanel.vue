@@ -26,6 +26,23 @@ const { settings, defaults } = useReviewSettings()
 
 const draft = reactive({ ...settings.value })
 const reviewExpanded = ref(false)
+const shortcutsExpanded = ref(false)
+
+const shortcuts = [
+  { keys: ['Ctrl', 'N'], desc: '新建错题', mode: '全局' },
+  { keys: ['Ctrl', 'S'], desc: '保存', mode: '全局' },
+  { keys: ['Ctrl', 'R'], desc: '切换答案显示/隐藏', mode: '全局' },
+  { keys: ['Ctrl', '←'], desc: '上一题', mode: '全局' },
+  { keys: ['Ctrl', '→'], desc: '下一题', mode: '全局' },
+  { keys: ['Ctrl', 'Z'], desc: '撤销绘图', mode: '画笔模式' },
+  { keys: ['Ctrl', 'Y'], desc: '重做绘图', mode: '画笔模式' },
+  { keys: ['W'], desc: '上一题', mode: '编辑模式' },
+  { keys: ['S'], desc: '下一题', mode: '编辑模式' },
+  { keys: ['Space'], desc: '显示答案', mode: '复习模式' },
+  { keys: ['1'], desc: '评分：忘记了', mode: '复习模式' },
+  { keys: ['2'], desc: '评分：不熟悉', mode: '复习模式' },
+  { keys: ['3'], desc: '评分：已掌握', mode: '复习模式' },
+]
 
 // Reset draft when settings panel opens
 watch(
@@ -111,6 +128,52 @@ function save() {
               :class="isDark ? 'left-[22px]' : 'left-0.5'"
             />
           </button>
+        </div>
+
+        <!-- Keyboard shortcuts -->
+        <div class="pt-4 border-t border-gray-100 dark:border-[#2e2e2c]">
+          <button
+            class="w-full flex items-center justify-between text-[13px] font-medium text-gray-700 dark:text-brand-light-gray hover:text-accent transition-colors"
+            @click="shortcutsExpanded = !shortcutsExpanded"
+          >
+            <span>快捷键</span>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              class="transition-transform duration-200"
+              :class="shortcutsExpanded ? 'rotate-180' : ''"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+
+          <div v-if="shortcutsExpanded" class="mt-3 space-y-1.5">
+            <div
+              v-for="sc in shortcuts"
+              :key="sc.keys.join('+')"
+              class="flex items-center justify-between py-1.5"
+            >
+              <span class="text-[12px] text-gray-600 dark:text-brand-light-gray">{{
+                sc.desc
+              }}</span>
+              <span class="flex items-center gap-1">
+                <span
+                  v-for="k in sc.keys"
+                  :key="k"
+                  class="inline-flex items-center px-1.5 py-0.5 text-[11px] font-mono rounded border border-gray-200 dark:border-[#2e2e2c] bg-gray-50 dark:bg-[#1e1e1c] text-gray-500 dark:text-brand-mid min-w-[22px] justify-center"
+                  >{{ k }}</span
+                >
+                <span
+                  class="text-[10px] text-gray-400 dark:text-brand-mid ml-1.5 w-14 text-right"
+                  >{{ sc.mode }}</span
+                >
+              </span>
+            </div>
+          </div>
         </div>
 
         <!-- Review settings -->
