@@ -9,29 +9,32 @@ defineProps<{
   activeTag: string | null
   tagMap: Record<string, number>
   allTags: string[]
+  allCount: number
 }>()
 
 const emit = defineEmits<{
   filter: [tag: string]
-  'add-tag': [name: string]
+  'add-tag': [name: string, global?: boolean]
   'rename-tag': [oldName: string, newName: string]
   'delete-tag': [name: string]
 }>()
 
 const addingTag = ref(false)
 const newTagName = ref('')
+const newTagGlobal = ref(false)
 const newTagInput = ref<HTMLInputElement | null>(null)
 
 function startAddTag() {
   sectionOpen.value = true
   addingTag.value = true
   newTagName.value = ''
+  newTagGlobal.value = false
   nextTick(() => newTagInput.value?.focus())
 }
 
 function confirmAddTag() {
   const name = newTagName.value.trim()
-  if (name) emit('add-tag', name)
+  if (name) emit('add-tag', name, newTagGlobal.value)
   addingTag.value = false
 }
 
@@ -125,31 +128,50 @@ function cancelDelete() {
     <div class="section-collapse" :class="{ active: sectionOpen }">
       <div class="section-collapse-inner">
         <!-- Inline input for new tag -->
-        <div v-if="addingTag" class="flex items-center mb-1.5">
+        <div v-if="addingTag" class="mb-1.5 space-y-1.5">
           <input
             ref="newTagInput"
             v-model="newTagName"
             type="text"
-            class="flex-1 min-w-0 text-sm px-3 py-1.5 rounded-l-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
+            class="w-full text-sm px-3 py-1.5 rounded-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
             placeholder="新标签名称"
             @keydown.enter="confirmAddTag()"
             @keydown.escape="cancelAddTag()"
           />
-          <button
-            class="text-xs px-2 py-1.5 border border-l-0 border-accent bg-accent text-white hover:brightness-110 transition-colors flex-shrink-0"
-            @click="confirmAddTag()"
+          <div class="flex items-center justify-end gap-1">
+            <button
+              class="text-xs px-2 py-1.5 rounded-l-md border border-accent bg-accent text-white hover:brightness-110 transition-colors flex-shrink-0"
+              @click="confirmAddTag()"
+            >
+              确定
+            </button>
+            <button
+              class="text-xs px-2 py-1.5 rounded-r-md border border-l-0 border-gray-200 dark:border-[#2e2e2c] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a28] transition-colors flex-shrink-0"
+              @click="cancelAddTag()"
+            >
+              取消
+            </button>
+          </div>
+          <label
+            class="flex items-center gap-1 text-xs text-gray-500 dark:text-brand-mid cursor-pointer select-none"
           >
-            确定
-          </button>
-          <button
-            class="text-xs px-2 py-1.5 rounded-r-md border border-l-0 border-gray-200 dark:border-[#2e2e2c] text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a28] transition-colors flex-shrink-0"
-            @click="cancelAddTag()"
-          >
-            取消
-          </button>
+            <input
+              v-model="newTagGlobal"
+              type="checkbox"
+              class="w-3.5 h-3.5 rounded accent-accent"
+            />
+            应用于所有错题本
+          </label>
         </div>
-
         <div class="flex flex-wrap gap-1">
+          <button
+            class="text-sm px-3 py-1.5 rounded-md border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:border-accent hover:text-accent whitespace-nowrap"
+            :class="{ '!bg-accent !text-white !border-accent': !activeTag }"
+            @click="emit('filter', '__all__')"
+          >
+            全部 ({{ allCount }})
+          </button>
+
           <template v-if="allTags.length === 0">
             <span class="text-xs text-gray-500 dark:text-brand-mid">暂无标签</span>
           </template>

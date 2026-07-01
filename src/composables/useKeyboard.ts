@@ -72,6 +72,32 @@ export function useKeyboard(actions: KeyboardActions) {
       }
     }
 
+    // S/D to navigate prev/next (edit mode, not typing)
+    if (actions.mode?.value === 'edit' && !actions.drawingEnabled?.value) {
+      if (e.key === 's' && !ctrl) {
+        const el = document.activeElement
+        if (!el || !(el as HTMLElement).isContentEditable) {
+          const tag = (el as HTMLElement)?.tagName
+          if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+            e.preventDefault()
+            actions.onPrev()
+            return
+          }
+        }
+      }
+      if (e.key === 'd' && !ctrl) {
+        const el = document.activeElement
+        if (!el || !(el as HTMLElement).isContentEditable) {
+          const tag = (el as HTMLElement)?.tagName
+          if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+            e.preventDefault()
+            actions.onNext()
+            return
+          }
+        }
+      }
+    }
+
     // Review mode shortcuts
     if (actions.mode?.value === 'review') {
       // Space to reveal answer

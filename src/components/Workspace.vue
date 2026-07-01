@@ -118,7 +118,7 @@ const emit = defineEmits<{
   'clear-canvas': []
   undo: []
   redo: []
-  'mount-canvas': [el: HTMLElement | null, entryId: string]
+  'mount-canvas': [el: HTMLElement | null, entryId: string, field: string]
 
   // Batch
   'toggle-select': [id: string]
@@ -128,9 +128,9 @@ const emit = defineEmits<{
   'batch-delete': []
   'confirm-batch-delete': []
   'cancel-batch-delete': []
-  'add-subject': [name: string]
-  'add-tag': [name: string]
-  'add-source': [name: string]
+  'add-subject': [name: string, global?: boolean]
+  'add-tag': [name: string, global?: boolean]
+  'add-source': [name: string, global?: boolean]
   'rename-subject': [oldName: string, newName: string]
   'delete-subject': [name: string]
   'rename-tag': [oldName: string, newName: string]
@@ -227,9 +227,9 @@ function onWheel(e: WheelEvent) {
       @range-select="(ids, from, to) => emit('range-select', ids, from, to)"
       @select-all="(ids) => emit('select-all', ids)"
       @deselect-all="emit('deselect-all')"
-      @add-subject="(name) => emit('add-subject', name)"
-      @add-tag="(name) => emit('add-tag', name)"
-      @add-source="(name) => emit('add-source', name)"
+      @add-subject="(name, global) => emit('add-subject', name, global)"
+      @add-tag="(name, global) => emit('add-tag', name, global)"
+      @add-source="(name, global) => emit('add-source', name, global)"
       @rename-subject="(oldName, newName) => emit('rename-subject', oldName, newName)"
       @delete-subject="(name) => emit('delete-subject', name)"
       @rename-tag="(oldName, newName) => emit('rename-tag', oldName, newName)"
@@ -284,8 +284,8 @@ function onWheel(e: WheelEvent) {
             @update="emit('mark-dirty')"
             @blur-save="emit('blur-save')"
             @reveal="emit('reveal')"
-            @mount-canvas="(el, entryId) => emit('mount-canvas', el, entryId)"
-            @add-tag="(name) => emit('add-tag', name)"
+            @mount-canvas="(el, entryId, field) => emit('mount-canvas', el, entryId, field)"
+            @add-tag="(name, global) => emit('add-tag', name, global)"
           />
           <!-- <AiChatSidebar :entry="activeEntry" /> -->
         </div>
@@ -309,7 +309,7 @@ function onWheel(e: WheelEvent) {
           @start-review="(force: boolean) => emit('start-review', force)"
           @exit-review="emit('exit-review')"
           @dismiss-summary="emit('dismiss-summary')"
-          @mount-canvas="(el, entryId) => emit('mount-canvas', el, entryId)"
+          @mount-canvas="(el, entryId, field) => emit('mount-canvas', el, entryId, field)"
         />
 
         <div

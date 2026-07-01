@@ -148,11 +148,19 @@ export function useFilter(entries: Ref<NoteEntry[]>): FilterState {
   }
 
   function setTag(t: string) {
-    activeTag.value = activeTag.value === t ? null : t
+    if (t === '__all__') {
+      activeTag.value = null
+    } else {
+      activeTag.value = activeTag.value === t ? null : t
+    }
   }
 
   function setSource(s: string) {
-    activeSource.value = activeSource.value === s ? null : s
+    if (s === '__all__') {
+      activeSource.value = null
+    } else {
+      activeSource.value = activeSource.value === s ? null : s
+    }
   }
 
   const masteryMap = computed(() => {

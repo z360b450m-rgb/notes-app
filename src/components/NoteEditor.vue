@@ -26,7 +26,7 @@ const emit = defineEmits<{
   update: []
   reveal: []
   'blur-save': []
-  'mount-canvas': [el: HTMLElement, entryId: string]
+  'mount-canvas': [el: HTMLElement, entryId: string, field: string]
   'add-tag': [name: string]
 }>()
 
@@ -280,7 +280,7 @@ watch(
         suppressInput = false
       }
       if (questionContentRef.value) {
-        emit('mount-canvas', questionContentRef.value, props.entry.id)
+        emit('mount-canvas', questionContentRef.value, props.entry.id, 'question')
       }
     })
   },
@@ -652,6 +652,7 @@ function onQuestionWheel(e: WheelEvent) {
           @update:model-value="onWrongAnswer($event)"
           @reveal="emit('reveal')"
           @blur="onBlur"
+          @mount-canvas="(el, entryId, field) => emit('mount-canvas', el, entryId, field)"
         />
       </div>
 
@@ -676,6 +677,7 @@ function onQuestionWheel(e: WheelEvent) {
           @update:model-value="onCorrectAnswer($event)"
           @reveal="emit('reveal')"
           @blur="onBlur"
+          @mount-canvas="(el, entryId, field) => emit('mount-canvas', el, entryId, field)"
         />
       </div>
     </div>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // @AI-NOTE: 答案面板组件 —— 纯展示 + 编辑。数据通过 props 传入,
 // 变更通过 emit 委托。禁止直接操作存储或实现保存逻辑。
-import { ref, watch, nextTick, computed } from 'vue'
+import { ref, watch, nextTick, computed, inject, type Ref } from 'vue'
 import CameraCapture from './CameraCapture.vue'
 import ScreenshotPicker from './ScreenshotPicker.vue'
 
@@ -16,9 +16,13 @@ const emit = defineEmits<{
   'update:modelValue': [html: string]
   reveal: []
   blur: []
+  'mount-canvas': [el: HTMLElement, entryId: string, field: string]
 }>()
 
+const drawingEnabled = inject<Ref<boolean>>('drawingEnabled', ref(false))
+
 const bodyRef = ref<HTMLDivElement | null>(null)
+const canvasContainerRef = ref<HTMLDivElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const camOpen = ref(false)
 const screenshotOpen = ref(false)
@@ -57,10 +61,38 @@ function syncContent() {
   })
 }
 
-watch(() => props.entryId, syncContent, { immediate: true })
+watch(
+  () => props.entryId,
+  () => {
+    syncContent()
+    nextTick(() => {
+      if (canvasContainerRef.value && props.entryId) {
+        emit(
+          'mount-canvas',
+          canvasContainerRef.value,
+          props.entryId,
+          props.type === 'wrong' ? 'wrongAnswer' : 'correctAnswer',
+        )
+      }
+    })
+  },
+  { immediate: true },
+)
 
 watch(showHidden, (hidden) => {
-  if (!hidden) syncContent()
+  if (!hidden) {
+    syncContent()
+    nextTick(() => {
+      if (canvasContainerRef.value && props.entryId) {
+        emit(
+          'mount-canvas',
+          canvasContainerRef.value,
+          props.entryId,
+          props.type === 'wrong' ? 'wrongAnswer' : 'correctAnswer',
+        )
+      }
+    })
+  }
 })
 
 function onInput() {
@@ -256,17 +288,19 @@ function onScreenshotCapture(dataUrl: string) {
       class="flex-1 overflow-y-auto overscroll-contain"
       @wheel="onBodyWheel"
     >
-      <div
-        ref="bodyRef"
-        class="panel-body px-3.5 py-3 text-base leading-relaxed md-content outline-none text-gray-800 dark:text-gray-200 min-h-full"
-        contenteditable="true"
-        :data-placeholder="'输入' + label + '…'"
-        @input="onInput"
-        @paste="onPaste"
-        @dragover="onDragOver"
-        @drop="onDrop"
-        @blur="emit('blur')"
-      />
+      <div ref="canvasContainerRef" :style="{ position: 'relative', minHeight: '100%' }">
+        <div
+          ref="bodyRef"
+          class="panel-body px-3.5 py-3 text-base leading-relaxed md-content outline-none text-gray-800 dark:text-gray-200 min-h-full"
+          :contenteditable="drawingEnabled ? 'false' : 'true'"
+          :data-placeholder="'输入' + label + '…'"
+          @input="onInput"
+          @paste="onPaste"
+          @dragover="onDragOver"
+          @drop="onDrop"
+          @blur="emit('blur')"
+        />
+      </div>
     </div>
 
     <div

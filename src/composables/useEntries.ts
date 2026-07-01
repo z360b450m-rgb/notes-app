@@ -348,7 +348,7 @@ export function useEntries() {
       nextReviewDate: Date.now() + settings.value.firstReviewDays * 86400000,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      drawing: documentBase64,
+      drawings: { question: documentBase64 },
     }
     await db.put(toPlain(entry))
     entries.value.unshift(entry)

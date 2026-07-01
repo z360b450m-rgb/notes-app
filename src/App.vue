@@ -10,6 +10,7 @@ import { useMetaStore } from './composables/useMetaStore'
 import { useReview } from './composables/useReview'
 import { useReviewSettings } from './composables/useReviewSettings'
 import { useNotebooks } from './composables/useNotebooks'
+import type { NoteEntry } from '@/types'
 import { useDrawing } from './composables/useDrawing'
 import { useBackup } from './composables/useBackup'
 import { useExport } from './composables/useExport'
@@ -114,7 +115,7 @@ const {
   addSource,
   removeSource,
   renameSource,
-} = useMetaStore(notebookEntries)
+} = useMetaStore(notebookEntries, () => activeNotebookId.value ?? '')
 
 const {
   mode,
@@ -157,7 +158,7 @@ const {
   loadDrawing,
   mountCanvas,
   setCanvasParent,
-  captureDrawing,
+  captureAllDrawings,
   setStoredDrawing,
 } = useDrawing(markDirty)
 
@@ -481,16 +482,16 @@ function handleBatchTag(tags: string[]) {
   showToast(`已为 ${selectedCount.value} 条错题添加标签`)
 }
 
-function handleAddSubject(name: string) {
-  addSubject(name)
+function handleAddSubject(name: string, global?: boolean) {
+  addSubject(name, global)
 }
 
-function handleAddTag(name: string) {
-  addTag(name)
+function handleAddTag(name: string, global?: boolean) {
+  addTag(name, global)
 }
 
-function handleAddSource(name: string) {
-  addSource(name)
+function handleAddSource(name: string, global?: boolean) {
+  addSource(name, global)
 }
 
 async function handleRenameSubject(oldName: string, newName: string) {
@@ -623,44 +624,60 @@ function handleStartReview(force = false) {
   }, 'review')
 }
 
-function handleMountCanvas(el: HTMLElement, entryId: string) {
-  // Sync drawing to the entry we're leaving before switching
+function handleMountCanvas(el: HTMLElement, entryId: string, field: string) {
+  // Sync previous entry's drawings before switching
   if (currentEntryId.value && currentEntryId.value !== entryId) {
     const oldEntry = entries.value.find((e) => e.id === currentEntryId.value)
     if (oldEntry) {
-      const dataUrl = captureDrawing()
-      if (dataUrl) {
-        oldEntry.drawing = dataUrl
-      } else {
-        delete oldEntry.drawing
+      const all = captureAllDrawings()
+      if (Object.keys(all).length > 0) {
+        oldEntry.drawings = { ...oldEntry.drawings, ...all }
       }
     }
   }
 
-  mountCanvas(el)
+  mountCanvas(el, field)
+
   // Pre-populate store from persisted drawing data
   const entry = entries.value.find((e) => e.id === entryId)
-  if (entry?.drawing) {
-    setStoredDrawing(entryId, entry.drawing)
+  if (entry?.drawings) {
+    for (const [key, url] of Object.entries(entry.drawings)) {
+      setStoredDrawing(entryId, key, url)
+    }
   }
-  loadDrawing(entryId)
+  // Migrate legacy drawing field
+  const legacy = entry as NoteEntry & { drawing?: string }
+  if (legacy.drawing && !entry.drawings) {
+    setStoredDrawing(entryId, 'question', legacy.drawing)
+    delete legacy.drawing
+  }
+  loadDrawing(entryId, field)
 }
 
 function syncDrawingToEntry() {
   if (!activeId.value) return
   const entry = entries.value.find((e) => e.id === activeId.value)
   if (!entry) return
-  const dataUrl = captureDrawing()
-  if (dataUrl) {
-    entry.drawing = dataUrl
-  } else {
-    delete entry.drawing
+  try {
+    const all = captureAllDrawings()
+    if (Object.keys(all).length > 0) {
+      entry.drawings = { ...entry.drawings, ...all }
+    } else if (!entry.drawings || Object.keys(entry.drawings).length === 0) {
+      delete entry.drawings
+    }
+  } catch (err) {
+    console.error('syncDrawingToEntry failed', err)
   }
 }
 
 async function handleSave() {
   syncDrawingToEntry()
-  await saveEntry()
+  try {
+    await saveEntry()
+  } catch (err) {
+    console.error('handleSave failed', err)
+    showToast('保存失败，请重试')
+  }
 }
 
 function handleBlurSave() {
@@ -817,7 +834,9 @@ watch(activeId, (_newId) => {
       @undo="undo"
       @redo="redo"
       @clear-canvas="clearCanvas"
-      @mount-canvas="(el: HTMLElement, entryId: string) => handleMountCanvas(el, entryId)"
+      @mount-canvas="
+        (el: HTMLElement, entryId: string, field: string) => handleMountCanvas(el, entryId, field)
+      "
       @toggle-select="toggleSelect"
       @range-select="(ids: string[], from: number, to: number) => selectRange(ids, from, to)"
       @select-all="selectAll"
@@ -825,9 +844,9 @@ watch(activeId, (_newId) => {
       @batch-delete="handleBatchDelete"
       @confirm-batch-delete="confirmBatchDelete"
       @cancel-batch-delete="cancelBatchDelete"
-      @add-subject="handleAddSubject"
-      @add-tag="handleAddTag"
-      @add-source="handleAddSource"
+      @add-subject="(name, global) => handleAddSubject(name, global)"
+      @add-tag="(name, global) => handleAddTag(name, global)"
+      @add-source="(name, global) => handleAddSource(name, global)"
       @rename-subject="handleRenameSubject"
       @delete-subject="handleDeleteSubject"
       @rename-tag="handleRenameTag"

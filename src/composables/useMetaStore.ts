@@ -1,7 +1,5 @@
-import { ref, computed, type Ref, type ComputedRef } from 'vue'
+import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
 import type { NoteEntry } from '@/types'
-
-const EXTRAS_KEY = 'meta_extras_v1'
 
 interface ExtrasStore {
   subjects: string[]
@@ -9,9 +7,15 @@ interface ExtrasStore {
   sources: string[]
 }
 
-function loadExtras(): ExtrasStore {
+const GLOBAL_KEY = 'meta_extras_v2__global'
+
+function makeKey(notebookId: string): string {
+  return `meta_extras_v2_${notebookId || '_global'}`
+}
+
+function loadExtras(key: string): ExtrasStore {
   try {
-    const raw = localStorage.getItem(EXTRAS_KEY)
+    const raw = localStorage.getItem(key)
     if (raw) {
       const parsed = JSON.parse(raw)
       if (
@@ -29,18 +33,12 @@ function loadExtras(): ExtrasStore {
   return { subjects: [], tags: [], sources: [] }
 }
 
-function saveExtras(store: ExtrasStore) {
+function saveExtras(key: string, store: ExtrasStore) {
   try {
-    localStorage.setItem(EXTRAS_KEY, JSON.stringify(store))
+    localStorage.setItem(key, JSON.stringify(store))
   } catch {
     /* quota exceeded or unavailable */
   }
-}
-
-const extrasStore = ref<ExtrasStore>(loadExtras())
-
-function persist() {
-  saveExtras(extrasStore.value)
 }
 
 function uniqSorted(items: string[]): string[] {
@@ -51,143 +49,217 @@ export interface MetaStore {
   allSubjects: ComputedRef<string[]>
   allTags: ComputedRef<string[]>
   allSources: ComputedRef<string[]>
-  addSubject: (name: string) => void
+  addSubject: (name: string, global?: boolean) => void
   removeSubject: (name: string) => void
   renameSubject: (oldName: string, newName: string) => void
-  addTag: (name: string) => void
+  addTag: (name: string, global?: boolean) => void
   removeTag: (name: string) => void
   renameTag: (oldName: string, newName: string) => void
-  addSource: (name: string) => void
+  addSource: (name: string, global?: boolean) => void
   removeSource: (name: string) => void
   renameSource: (oldName: string, newName: string) => void
 }
 
-export function useMetaStore(entries: Ref<NoteEntry[]>): MetaStore {
+export function useMetaStore(entries: Ref<NoteEntry[]>, getNotebookId: () => string): MetaStore {
+  const storageKey = computed(() => makeKey(getNotebookId()))
+
+  const extrasStore = ref<ExtrasStore>(loadExtras(storageKey.value))
+  const globalExtras = ref<ExtrasStore>(loadExtras(GLOBAL_KEY))
+
+  function persist() {
+    saveExtras(storageKey.value, extrasStore.value)
+  }
+
+  function persistGlobal() {
+    saveExtras(GLOBAL_KEY, globalExtras.value)
+  }
+
+  watch(storageKey, (newKey) => {
+    extrasStore.value = loadExtras(newKey)
+  })
+
+  // Merge per-notebook extras + global extras + entry data
   const allSubjects = computed(() =>
     uniqSorted([
       ...entries.value.map((e) => e.subject).filter(Boolean),
       ...extrasStore.value.subjects,
+      ...globalExtras.value.subjects,
     ]),
   )
 
   const allTags = computed(() =>
-    uniqSorted([...entries.value.flatMap((e) => e.tags || []), ...extrasStore.value.tags]),
+    uniqSorted([
+      ...entries.value.flatMap((e) => e.tags || []),
+      ...extrasStore.value.tags,
+      ...globalExtras.value.tags,
+    ]),
   )
 
   const allSources = computed(() =>
     uniqSorted([
       ...entries.value.map((e) => e.source).filter(Boolean),
       ...extrasStore.value.sources,
+      ...globalExtras.value.sources,
     ]),
   )
 
-  function addSubject(name: string) {
+  // ── Subjects ──
+
+  function addSubject(name: string, global = false) {
     const trimmed = name.trim()
     if (!trimmed) return
-    if (!extrasStore.value.subjects.includes(trimmed)) {
-      extrasStore.value = {
-        ...extrasStore.value,
-        subjects: [...extrasStore.value.subjects, trimmed],
+    const target = global ? globalExtras : extrasStore
+    const persistFn = global ? persistGlobal : persist
+    if (!target.value.subjects.includes(trimmed)) {
+      target.value = {
+        ...target.value,
+        subjects: [...target.value.subjects, trimmed],
       }
-      persist()
+      persistFn()
     }
   }
 
   function removeSubject(name: string) {
-    extrasStore.value = {
-      ...extrasStore.value,
-      subjects: extrasStore.value.subjects.filter((s) => s !== name),
-    }
-    persist()
-  }
-
-  function addTag(name: string) {
-    const trimmed = name.trim()
-    if (!trimmed) return
-    if (!extrasStore.value.tags.includes(trimmed)) {
-      extrasStore.value = {
-        ...extrasStore.value,
-        tags: [...extrasStore.value.tags, trimmed],
+    for (const [store, persistFn] of [
+      [extrasStore, persist] as const,
+      [globalExtras, persistGlobal] as const,
+    ]) {
+      if (store.value.subjects.includes(name)) {
+        store.value = {
+          ...store.value,
+          subjects: store.value.subjects.filter((s) => s !== name),
+        }
+        persistFn()
       }
-      persist()
     }
-  }
-
-  function removeTag(name: string) {
-    extrasStore.value = {
-      ...extrasStore.value,
-      tags: extrasStore.value.tags.filter((t) => t !== name),
-    }
-    persist()
-  }
-
-  function addSource(name: string) {
-    const trimmed = name.trim()
-    if (!trimmed) return
-    if (!extrasStore.value.sources.includes(trimmed)) {
-      extrasStore.value = {
-        ...extrasStore.value,
-        sources: [...extrasStore.value.sources, trimmed],
-      }
-      persist()
-    }
-  }
-
-  function removeSource(name: string) {
-    extrasStore.value = {
-      ...extrasStore.value,
-      sources: extrasStore.value.sources.filter((s) => s !== name),
-    }
-    persist()
   }
 
   function renameSubject(oldName: string, newName: string) {
     const trimmed = newName.trim()
     if (!trimmed || trimmed === oldName) return
-    const subjects = extrasStore.value.subjects
-    const idx = subjects.indexOf(oldName)
-    if (idx === -1) return
-    const replaced = [...subjects]
-    if (subjects.includes(trimmed)) {
-      // Merge: remove old name, new name already exists
-      replaced.splice(idx, 1)
-    } else {
-      replaced[idx] = trimmed
+    for (const [store, persistFn] of [
+      [extrasStore, persist] as const,
+      [globalExtras, persistGlobal] as const,
+    ]) {
+      const subjects = store.value.subjects
+      const idx = subjects.indexOf(oldName)
+      if (idx === -1) continue
+      const replaced = [...subjects]
+      if (subjects.includes(trimmed)) {
+        replaced.splice(idx, 1)
+      } else {
+        replaced[idx] = trimmed
+      }
+      store.value = { ...store.value, subjects: replaced }
+      persistFn()
+      return
     }
-    extrasStore.value = { ...extrasStore.value, subjects: replaced }
-    persist()
+  }
+
+  // ── Tags ──
+
+  function addTag(name: string, global = false) {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    const target = global ? globalExtras : extrasStore
+    const persistFn = global ? persistGlobal : persist
+    if (!target.value.tags.includes(trimmed)) {
+      target.value = {
+        ...target.value,
+        tags: [...target.value.tags, trimmed],
+      }
+      persistFn()
+    }
+  }
+
+  function removeTag(name: string) {
+    for (const [store, persistFn] of [
+      [extrasStore, persist] as const,
+      [globalExtras, persistGlobal] as const,
+    ]) {
+      if (store.value.tags.includes(name)) {
+        store.value = {
+          ...store.value,
+          tags: store.value.tags.filter((t) => t !== name),
+        }
+        persistFn()
+      }
+    }
   }
 
   function renameTag(oldName: string, newName: string) {
     const trimmed = newName.trim()
     if (!trimmed || trimmed === oldName) return
-    const tags = extrasStore.value.tags
-    const idx = tags.indexOf(oldName)
-    if (idx === -1) return
-    const replaced = [...tags]
-    if (tags.includes(trimmed)) {
-      replaced.splice(idx, 1)
-    } else {
-      replaced[idx] = trimmed
+    for (const [store, persistFn] of [
+      [extrasStore, persist] as const,
+      [globalExtras, persistGlobal] as const,
+    ]) {
+      const tags = store.value.tags
+      const idx = tags.indexOf(oldName)
+      if (idx === -1) continue
+      const replaced = [...tags]
+      if (tags.includes(trimmed)) {
+        replaced.splice(idx, 1)
+      } else {
+        replaced[idx] = trimmed
+      }
+      store.value = { ...store.value, tags: replaced }
+      persistFn()
+      return
     }
-    extrasStore.value = { ...extrasStore.value, tags: replaced }
-    persist()
+  }
+
+  // ── Sources ──
+
+  function addSource(name: string, global = false) {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    const target = global ? globalExtras : extrasStore
+    const persistFn = global ? persistGlobal : persist
+    if (!target.value.sources.includes(trimmed)) {
+      target.value = {
+        ...target.value,
+        sources: [...target.value.sources, trimmed],
+      }
+      persistFn()
+    }
+  }
+
+  function removeSource(name: string) {
+    for (const [store, persistFn] of [
+      [extrasStore, persist] as const,
+      [globalExtras, persistGlobal] as const,
+    ]) {
+      if (store.value.sources.includes(name)) {
+        store.value = {
+          ...store.value,
+          sources: store.value.sources.filter((s) => s !== name),
+        }
+        persistFn()
+      }
+    }
   }
 
   function renameSource(oldName: string, newName: string) {
     const trimmed = newName.trim()
     if (!trimmed || trimmed === oldName) return
-    const sources = extrasStore.value.sources
-    const idx = sources.indexOf(oldName)
-    if (idx === -1) return
-    const replaced = [...sources]
-    if (sources.includes(trimmed)) {
-      replaced.splice(idx, 1)
-    } else {
-      replaced[idx] = trimmed
+    for (const [store, persistFn] of [
+      [extrasStore, persist] as const,
+      [globalExtras, persistGlobal] as const,
+    ]) {
+      const sources = store.value.sources
+      const idx = sources.indexOf(oldName)
+      if (idx === -1) continue
+      const replaced = [...sources]
+      if (sources.includes(trimmed)) {
+        replaced.splice(idx, 1)
+      } else {
+        replaced[idx] = trimmed
+      }
+      store.value = { ...store.value, sources: replaced }
+      persistFn()
+      return
     }
-    extrasStore.value = { ...extrasStore.value, sources: replaced }
-    persist()
   }
 
   return {
