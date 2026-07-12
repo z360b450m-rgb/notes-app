@@ -1,0 +1,62 @@
+{
+  "name": "cuotiben-mobile",
+  "version": "2.1.5",
+  "private": true,
+  "description": "智能错题管理工具 - 记录错题、对比答案、高效复习",
+  "author": "Nie Yulong (聂昱龙)",
+  "license": "MIT",
+  "type": "module",
+  "keywords": [
+    "vue3",
+    "vite",
+    "pwa",
+    "education"
+  ],
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --configLoader runner",
+    "build": "vite build --configLoader runner",
+    "preview": "vite preview --host 0.0.0.0 --configLoader runner",
+    "format": "prettier --write .",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/dompurify": "^3.0.5",
+    "@types/jszip": "^3.4.0",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^10.5.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.9.2",
+    "globals": "^17.6.0",
+    "lint-staged": "^17.0.7",
+    "postcss": "^8.4.49",
+    "prettier": "^3.8.4",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.6.0",
+    "typescript-eslint": "^8.61.1",
+    "vite": "^6.0.0",
+    "vue-eslint-parser": "^10.4.1",
+    "vue-tsc": "^2.2.0"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.10",
+    "gsap": "^3.15.0",
+    "jszip": "^3.10.1",
+    "marked": "^15.0.0",
+    "pdfjs-dist": "^6.0.227",
+    "sql.js": "^1.14.1",
+    "vue": "^3.5.0"
+  },
+  "lint-staged": {
+    "*.{js,ts,jsx,tsx,vue,cjs,mjs}": [
+      "prettier --write",
+      "eslint --fix --max-warnings 0"
+    ],
+    "*.{css,scss,html,json,md,yaml,yml}": [
+      "prettier --write"
+    ]
+  }
+}

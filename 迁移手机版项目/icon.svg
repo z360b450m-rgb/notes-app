@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#d97757"/>
+  <!-- Abstract: circle + slash + check = correction -->
+  <g fill="none" stroke="#faf9f5" stroke-width="24" stroke-linecap="round">
+    <circle cx="256" cy="256" r="150" stroke-width="20" fill="rgba(250,249,245,0.06)"/>
+<!-- Checkmark overlaid -->
+    <polyline points="160,256 230,320 355,185" stroke-width="28"/>
+  </g>
+</svg>

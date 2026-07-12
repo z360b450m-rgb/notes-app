@@ -1,0 +1,35 @@
+diff --git a/node_modules/app-builder-lib/out/util/electronGet.js b/node_modules/app-builder-lib/out/util/electronGet.js
+index c433dbb..93c0f17 100644
+--- a/node_modules/app-builder-lib/out/util/electronGet.js
++++ b/node_modules/app-builder-lib/out/util/electronGet.js
+@@ -184,7 +184,29 @@ async function extractArchive(file, dir) {
+             throw new Error(`Extraction of ${path.basename(file)} produced no files`);
+         }
+         await fs.rm(dir, { recursive: true, force: true });
+-        await fs.rename(tmpDir, dir);
++        // Retry rename with backoff; Windows Defender may hold a temporary lock on newly-extracted files.
++        // If rename fails after all retries, fall back to copy+delete (cross-device safe).
++        let renamed = false;
++        for (let retry = 0; retry < 4; retry++) {
++            try {
++                await fs.rename(tmpDir, dir);
++                renamed = true;
++                break;
++            } catch (e) {
++                if (e.code !== 'EPERM' || retry === 3) {
++                    if (e.code === 'EPERM') {
++                        builder_util_1.log.warn({ tmpDir, dir }, "rename still EPERM after retries, falling back to copy+delete");
++                        await fs.cp(tmpDir, dir, { recursive: true });
++                        await fs.rm(tmpDir, { recursive: true, force: true });
++                        renamed = true;
++                        break;
++                    }
++                    throw e;
++                }
++                builder_util_1.log.warn({ tmpDir, dir, attempt: retry + 1 }, "rename EPERM, retrying in " + ((retry + 1) * 2) + "s");
++                await new Promise(r => setTimeout(r, (retry + 1) * 2000));
++            }
++        }
+     }
+     finally {
+         await release().catch(err => builder_util_1.log.warn({ err }, "failed to release lockfile"));

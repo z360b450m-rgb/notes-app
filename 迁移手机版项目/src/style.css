@@ -1,0 +1,211 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .mobile-nav-item {
+    @apply flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-[11px] text-gray-500 dark:text-brand-mid;
+  }
+  .mobile-nav-active {
+    @apply bg-accent/10 font-semibold text-accent;
+  }
+}
+
+@layer base {
+  button {
+    @apply transition-all duration-150 ease-out;
+  }
+  button:active:not(:disabled) {
+    @apply scale-[0.97] brightness-90;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family:
+      'Poppins',
+      'Noto Sans SC',
+      system-ui,
+      -apple-system,
+      sans-serif;
+  }
+
+  body {
+    font-family: 'Noto Sans SC', 'Lora', Georgia, serif;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+    overscroll-behavior: none;
+  }
+}
+
+/* Brand scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgba(176, 174, 165, 0.4);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(176, 174, 165, 0.7);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background-color: rgba(176, 174, 165, 0.25);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(176, 174, 165, 0.45);
+}
+
+/* Markdown content styles — brand-adapted */
+.md-content img {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 8px 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+.md-content h1,
+.md-content h2,
+.md-content h3 {
+  margin: 10px 0 6px;
+  font-size: 1.1em;
+}
+.md-content p {
+  margin: 4px 0;
+}
+.md-content pre {
+  background: #141413;
+  color: #faf9f5;
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 12px;
+  margin: 8px 0;
+}
+.md-content code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.9em;
+}
+.md-content :not(pre) > code {
+  background: #e8e6dc;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+.dark .md-content :not(pre) > code {
+  background: #2a2a28;
+  color: #e8e6dc;
+}
+.md-content blockquote {
+  border-left: 3px solid #d97757;
+  padding-left: 12px;
+  color: #b0aea5;
+  margin: 8px 0;
+}
+.md-content ul,
+.md-content ol {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+.md-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.md-content th,
+.md-content td {
+  border: 1px solid #e8e6dc;
+  padding: 6px 10px;
+  text-align: left;
+}
+.md-content th {
+  background: #faf9f5;
+  font-weight: 600;
+}
+.dark .md-content th {
+  background: #1a1a18;
+  border-color: #2a2a28;
+}
+.dark .md-content td {
+  border-color: #2a2a28;
+}
+
+/* Toast animation */
+.toast-enter-active {
+  animation: toast-in 0.3s ease;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Page transition (NotebookMenu <-> Workspace) */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.22s ease;
+}
+.page-enter-from,
+.page-leave-to {
+  opacity: 0;
+}
+
+/* Stats panel slide transition */
+.stats-enter-active {
+  transition: opacity 0.2s ease;
+}
+.stats-enter-active .fixed.right-0 {
+  transition: transform 0.25s ease;
+}
+.stats-enter-from {
+  opacity: 0;
+}
+.stats-enter-from .fixed.right-0 {
+  transform: translateX(100%);
+}
+.stats-leave-active {
+  transition: opacity 0.2s ease;
+}
+.stats-leave-active .fixed.right-0 {
+  transition: transform 0.2s ease;
+}
+.stats-leave-to {
+  opacity: 0;
+}
+.stats-leave-to .fixed.right-0 {
+  transform: translateX(100%);
+}
+
+/* Section collapse/expand via CSS Grid (auto-height animation) */
+.section-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+.section-collapse.active {
+  grid-template-rows: 1fr;
+}
+.section-collapse-inner {
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.section-collapse.active .section-collapse-inner {
+  opacity: 1;
+  transition: opacity 0.3s ease 0.1s;
+}
