@@ -6,6 +6,7 @@ import type { NoteEntry } from '@/types'
 import type { SortKey, SortDir } from '@/composables/useFilter'
 import type { StatsState } from '@/composables/useStats'
 import type { SessionRecord } from '@/composables/useReview'
+import type { NotebookPluginManifest } from '@/plugins/types'
 import { PEN_COLORS } from '@/composables/useDrawing'
 import AppSidebar from './AppSidebar.vue'
 import AppToolbar from './AppToolbar.vue'
@@ -70,6 +71,8 @@ const props = defineProps<{
   allSubjects: string[]
   allTags: string[]
   allSources: string[]
+  installedPluginIds: string[]
+  availablePlugins: NotebookPluginManifest[]
 }>()
 
 const emit = defineEmits<{
@@ -158,6 +161,8 @@ const emit = defineEmits<{
   'toggle-settings': []
   'toggle-dark': []
   'change-data-dir': []
+  'open-plugin': [pluginId: string]
+  'manage-plugins': []
 
   // Unsaved modal
   'save-and-proceed': []
@@ -234,6 +239,8 @@ function onWheel(e: WheelEvent) {
       :all-sources="allSources"
       :active-source="activeSource"
       :source-map="sourceMap"
+      :installed-plugin-ids="installedPluginIds"
+      :available-plugins="availablePlugins"
       @return-to-menu="emit('return-to-menu')"
       @select="(id) => emit('select', id)"
       @filter-subject="(s) => emit('filter-subject', s)"
@@ -262,6 +269,8 @@ function onWheel(e: WheelEvent) {
       @batch-tag="(tags) => emit('batch-tag', tags)"
       @batch-export="emit('batch-export')"
       @toggle-settings="emit('toggle-settings')"
+      @open-plugin="(pluginId) => emit('open-plugin', pluginId)"
+      @manage-plugins="emit('manage-plugins')"
     />
 
     <main class="flex-1 flex flex-col min-w-0">

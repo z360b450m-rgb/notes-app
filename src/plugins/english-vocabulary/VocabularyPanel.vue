@@ -156,7 +156,7 @@ async function beginImport() {
 
 async function openAnkiDeckLibrary() {
   if (!window.electronAPI?.openAnkiDeckLibrary) {
-    window.open('https://ankiweb.net/shared/decks', '_blank', 'noopener,noreferrer')
+    message.value = '词库资源库仅支持在桌面版中打开'
     return
   }
   try {
@@ -527,13 +527,13 @@ onUnmounted(stop)
 
 <template>
   <div
-    class="fixed inset-0 z-50 flex flex-col bg-[#faf9f5] text-[#141413] dark:bg-[#141413] dark:text-[#faf9f5] md:flex-row"
+    class="fixed inset-0 z-40 flex bg-[#faf9f5] text-[#141413] dark:bg-[#141413] dark:text-[#faf9f5]"
   >
     <aside
-      class="flex max-h-[42vh] w-full flex-shrink-0 flex-col border-b border-[#e8e6dc] bg-white p-4 dark:border-[#2e2e2c] dark:bg-[#1e1e1c] md:max-h-none md:w-[250px] md:border-r md:border-b-0 md:p-5"
+      class="flex w-[250px] flex-shrink-0 flex-col border-r border-[#e8e6dc] bg-white p-5 dark:border-[#2e2e2c] dark:bg-[#1e1e1c]"
     >
       <button
-        class="mb-3 flex items-center gap-2 text-sm text-[#788c5d] hover:text-[#52633e] md:mb-7"
+        class="mb-7 flex items-center gap-2 text-sm text-[#788c5d] hover:text-[#52633e]"
         @click="closePanel"
       >
         <svg
@@ -587,13 +587,11 @@ onUnmounted(stop)
         </svg>
         导入 APKG 词库
       </button>
-      <div
-        class="mt-3 flex min-h-0 gap-2 overflow-x-auto overflow-y-hidden md:mt-6 md:block md:flex-1 md:space-y-2 md:overflow-y-auto md:overflow-x-hidden"
-      >
+      <div class="mt-6 min-h-0 flex-1 space-y-2 overflow-y-auto">
         <button
           v-for="item in archives"
           :key="item.id"
-          class="min-w-[170px] rounded-[8px] border px-3 py-2 text-left text-sm dark:border-[#333] md:w-full md:min-w-0"
+          class="w-full rounded-[8px] border px-3 py-2 text-left text-sm dark:border-[#333]"
           :class="
             archive?.id === item.id
               ? 'border-[#d97757] bg-[#fdf0e8] dark:bg-[#2e2018]'
@@ -607,9 +605,7 @@ onUnmounted(stop)
       </div>
     </aside>
 
-    <main
-      class="min-w-0 flex-1 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:p-6 md:p-8"
-    >
+    <main class="min-w-0 flex-1 overflow-y-auto p-5 sm:p-8">
       <p
         v-if="message"
         class="mx-auto mb-4 max-w-4xl rounded-[8px] bg-[#fdf0e8] px-4 py-3 text-sm text-[#a85335] dark:bg-[#2e2018] dark:text-[#f0c4a8]"

@@ -11,6 +11,7 @@ import { useReview } from './composables/useReview'
 import { useReviewSettings } from './composables/useReviewSettings'
 import { useNotebooks } from './composables/useNotebooks'
 import type { NoteEntry } from '@/types'
+import type { VocabularyMistake } from '@/plugins/english-vocabulary/types'
 import { useDrawing } from './composables/useDrawing'
 import { useBackup } from './composables/useBackup'
 import { useExport } from './composables/useExport'
@@ -27,6 +28,10 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import PdfReviewPanel from './components/PdfReviewPanel.vue'
 import ImportOptionsModal from './components/ImportOptionsModal.vue'
 import AppToast from './components/AppToast.vue'
+import { ENGLISH_VOCABULARY_PLUGIN_ID } from './plugins/english-vocabulary/manifest'
+import { notebookPlugins, getNotebookPlugin } from './plugins/registry'
+import { notebookPluginService } from './plugins/service'
+import PluginManager from './plugins/PluginManager.vue'
 
 const {
   entries,
@@ -186,6 +191,13 @@ const { isDark, toggleDark } = useDarkMode()
 const stats = useStats(notebookEntries)
 const statsOpen = ref(false)
 const settingsOpen = ref(false)
+const installedPlugins = ref<Awaited<ReturnType<typeof notebookPluginService.listInstalled>>>([])
+const pluginManagerOpen = ref(false)
+const activePluginId = ref<string | null>(null)
+const activePlugin = computed(() =>
+  activePluginId.value ? getNotebookPlugin(activePluginId.value) : null,
+)
+const installedPluginIds = computed(() => installedPlugins.value.map((item) => item.pluginId))
 const isElectron = computed(() => typeof window !== 'undefined' && !!window.electronAPI)
 
 // Unsaved changes flow
@@ -201,12 +213,15 @@ async function handleEnterNotebook(id: string) {
   showNotebookMenu.value = false
   await loadEntries()
   await loadLogs()
+  installedPlugins.value = await notebookPluginService.listInstalled(id)
 }
 
 function handleReturnToMenu() {
   clearLastNotebook()
   showNotebookMenu.value = true
   activeId.value = null
+  activePluginId.value = null
+  installedPlugins.value = []
 }
 
 onMounted(async () => {
@@ -234,8 +249,101 @@ onMounted(async () => {
     showNotebookMenu.value = false
     await loadEntries()
     await loadLogs()
+    installedPlugins.value = await notebookPluginService.listInstalled(lastId)
   }
 })
+
+async function installPlugin(pluginId: string) {
+  if (!activeNotebookId.value) return
+  try {
+    await notebookPluginService.install(activeNotebookId.value, pluginId)
+    installedPlugins.value = await notebookPluginService.listInstalled(activeNotebookId.value)
+    pluginManagerOpen.value = false
+    activePluginId.value = pluginId
+    showToast(`${getNotebookPlugin(pluginId)?.name ?? '插件'}已安装到当前错题本`)
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '插件安装失败，请重试')
+  }
+}
+
+async function uninstallPlugin(pluginId: string, deleteData: boolean) {
+  if (!activeNotebookId.value) return
+  try {
+    await notebookPluginService.uninstall(activeNotebookId.value, pluginId, deleteData)
+    installedPlugins.value = await notebookPluginService.listInstalled(activeNotebookId.value)
+    if (activePluginId.value === pluginId) activePluginId.value = null
+    showToast(`${getNotebookPlugin(pluginId)?.name ?? '插件'}已卸载`)
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '插件卸载失败，请重试')
+  }
+}
+
+function openPlugin(pluginId: string) {
+  if (installedPluginIds.value.includes(pluginId)) activePluginId.value = pluginId
+}
+
+async function archiveVocabularyMistake(mistake: VocabularyMistake) {
+  if (!activeNotebookId.value) return
+  const now = Date.now()
+  const existing = notebookEntries.value.find(
+    (entry) =>
+      entry.pluginSource?.pluginId === 'english-vocabulary' &&
+      entry.pluginSource.archiveId === mistake.archiveId &&
+      entry.pluginSource.wordId === mistake.word.id &&
+      entry.pluginSource.reviewMode === mistake.mode,
+  )
+  const modeLabel = mistake.mode === 'zh-to-en' ? '中译英' : '英译中'
+  const packageTag = `Anki:${mistake.archiveName}`
+  const question =
+    mistake.mode === 'zh-to-en'
+      ? mistake.word.meaning
+      : [mistake.word.word, mistake.word.phonetic].filter(Boolean).join('<br>')
+  const correctAnswer = [
+    mistake.mode === 'zh-to-en' ? mistake.word.word : mistake.word.meaning,
+    mistake.word.exampleEn ? `<strong>英语例句</strong><br>${mistake.word.exampleEn}` : '',
+    mistake.word.exampleZh ? `<strong>例句翻译</strong><br>${mistake.word.exampleZh}` : '',
+    mistake.word.note ? `<strong>注释</strong><br>${mistake.word.note}` : '',
+  ]
+    .filter(Boolean)
+    .join('<br><br>')
+
+  const entry: NoteEntry = existing ?? {
+    id: `vocab_${mistake.archiveId}_${mistake.word.id}_${mistake.mode}`,
+    notebookId: activeNotebookId.value,
+    title: `[${modeLabel}] ${mistake.word.word}`,
+    question,
+    wrongAnswer: mistake.answer,
+    correctAnswer,
+    subject: '英语',
+    source: mistake.archiveName,
+    tags: ['英语单词', modeLabel, packageTag],
+    masteryLevel: 0,
+    consecutivePasses: 0,
+    nextReviewDate: now,
+    createdAt: now,
+    updatedAt: now,
+  }
+  entry.title = `[${modeLabel}] ${mistake.word.word}`
+  entry.question = question
+  entry.wrongAnswer = mistake.answer
+  entry.correctAnswer = correctAnswer
+  entry.subject = '英语'
+  entry.source = mistake.archiveName
+  entry.tags = Array.from(new Set([...entry.tags, '英语单词', modeLabel, packageTag]))
+  entry.nextReviewDate = now
+  entry.updatedAt = now
+  entry.pluginSource = {
+    pluginId: 'english-vocabulary',
+    archiveId: mistake.archiveId,
+    wordId: mistake.word.id,
+    reviewMode: mistake.mode,
+    wrongCount: (existing?.pluginSource?.wrongCount ?? 0) + 1,
+    lastWrongAt: now,
+  }
+  await db.put(JSON.parse(JSON.stringify(entry)))
+  await loadEntries()
+  showToast(existing ? '已更新对应英语错题' : '已归档到当前错题本')
+}
 
 // Crash protection: save snapshot before unload
 function onBeforeUnload() {
@@ -807,6 +915,8 @@ watch(activeId, (_newId) => {
       :active-source="activeSource"
       :active-mastery="activeMastery"
       :source-map="sourceMap"
+      :installed-plugin-ids="installedPluginIds"
+      :available-plugins="notebookPlugins"
       :stats="stats"
       @return-to-menu="handleReturnToMenu"
       @select="handleSelectEntry"
@@ -870,6 +980,8 @@ watch(activeId, (_newId) => {
       @import-pdf="handleOpenPdfImport"
       @toggle-stats="statsOpen = !statsOpen"
       @toggle-settings="settingsOpen = !settingsOpen"
+      @open-plugin="openPlugin"
+      @manage-plugins="pluginManagerOpen = true"
       @toggle-dark="toggleDark"
       @change-data-dir="handleChangeDataDir"
       @save-and-proceed="handleSaveAndProceed"
@@ -1086,6 +1198,24 @@ watch(activeId, (_newId) => {
     @keep="handleImportOption(true)"
     @reset="handleImportOption(false)"
     @cancel="handleImportOption(null)"
+  />
+  <component
+    :is="activePlugin?.component"
+    v-if="activePlugin && activeNotebookId"
+    :notebook-id="activeNotebookId"
+    :notebook-name="activeNotebook?.name ?? ''"
+    :archive-mistake="
+      activePlugin.id === ENGLISH_VOCABULARY_PLUGIN_ID ? archiveVocabularyMistake : undefined
+    "
+    @close="activePluginId = null"
+  />
+  <PluginManager
+    v-if="pluginManagerOpen"
+    :notebook-name="activeNotebook?.name ?? ''"
+    :installations="installedPlugins"
+    @close="pluginManagerOpen = false"
+    @install="installPlugin"
+    @uninstall="uninstallPlugin"
   />
   <AppToast :message="toastMsg" />
 </template>

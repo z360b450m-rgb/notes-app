@@ -76,4 +76,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAllNotebooks: () => ipcRenderer.invoke('storage:getAllNotebooks'),
   putNotebook: (notebook) => ipcRenderer.invoke('storage:putNotebook', notebook),
   deleteNotebook: (id) => ipcRenderer.invoke('storage:deleteNotebook', id),
+
+  // Notebook plugin API
+  isNotebookPluginInstalled: (notebookId, pluginId) =>
+    ipcRenderer.invoke('plugins:isInstalled', notebookId, pluginId),
+  listNotebookPlugins: (notebookId) => ipcRenderer.invoke('plugins:listInstalled', notebookId),
+  installNotebookPlugin: (notebookId, pluginId) =>
+    ipcRenderer.invoke('plugins:install', notebookId, pluginId),
+  uninstallNotebookPlugin: (notebookId, pluginId, deleteData) =>
+    ipcRenderer.invoke('plugins:uninstall', notebookId, pluginId, deleteData),
+
+  // Vocabulary API
+  openAnkiDeckLibrary: () => ipcRenderer.invoke('vocabulary:openAnkiDeckLibrary'),
+  inspectApkg: () => ipcRenderer.invoke('vocabulary:inspectApkg'),
+  archiveApkg: (notebookId, filePath, archiveName, mappings) =>
+    ipcRenderer.invoke('vocabulary:archiveApkg', notebookId, filePath, archiveName, mappings),
+  listVocabularyArchives: (notebookId) => ipcRenderer.invoke('vocabulary:listArchives', notebookId),
+  loadVocabularyArchive: (notebookId, archiveId) =>
+    ipcRenderer.invoke('vocabulary:loadArchive', notebookId, archiveId),
+  deleteVocabularyArchive: (notebookId, archiveId) =>
+    ipcRenderer.invoke('vocabulary:deleteArchive', notebookId, archiveId),
+  loadVocabularyProgress: (notebookId, archiveId) =>
+    ipcRenderer.invoke('vocabulary:loadProgress', notebookId, archiveId),
+  saveVocabularyProgress: (notebookId, archiveId, progress) =>
+    ipcRenderer.invoke('vocabulary:saveProgress', notebookId, archiveId, progress),
+  readVocabularyAudio: (notebookId, archiveId, filename) =>
+    ipcRenderer.invoke('vocabulary:readAudio', notebookId, archiveId, filename),
 })

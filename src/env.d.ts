@@ -5,6 +5,14 @@ interface DesktopSource {
   appIcon: string | null
 }
 
+type VocabularyArchive = import('@/plugins/english-vocabulary/types').VocabularyArchive
+type VocabularyFieldMapping = import('@/plugins/english-vocabulary/types').VocabularyFieldMapping
+type ApkgInspection = import('@/plugins/english-vocabulary/service').ApkgInspection
+type VocabularyArchiveSummary =
+  import('@/plugins/english-vocabulary/service').VocabularyArchiveSummary
+type VocabularyProgress = import('@/plugins/english-vocabulary/service').VocabularyProgress
+type NotebookPluginInstallation = import('@/plugins/types').NotebookPluginInstallation
+
 interface Window {
   electronAPI?: {
     platform: string
@@ -32,5 +40,42 @@ interface Window {
     putNotebook: (notebook: any) => Promise<void>
     deleteNotebook: (id: string) => Promise<void>
     getDesktopSources: () => Promise<DesktopSource[]>
+    isNotebookPluginInstalled?: (notebookId: string, pluginId: string) => Promise<boolean>
+    listNotebookPlugins?: (notebookId: string) => Promise<NotebookPluginInstallation[]>
+    installNotebookPlugin?: (notebookId: string, pluginId: string) => Promise<void>
+    uninstallNotebookPlugin?: (
+      notebookId: string,
+      pluginId: string,
+      deleteData: boolean,
+    ) => Promise<void>
+    openAnkiDeckLibrary?: () => Promise<void>
+    inspectApkg?: () => Promise<{
+      canceled?: boolean
+      filePath?: string
+      inspection?: ApkgInspection
+    }>
+    archiveApkg?: (
+      notebookId: string,
+      filePath: string,
+      archiveName: string,
+      mappings: Record<string, VocabularyFieldMapping>,
+    ) => Promise<VocabularyArchive>
+    listVocabularyArchives?: (notebookId: string) => Promise<VocabularyArchiveSummary[]>
+    loadVocabularyArchive?: (
+      notebookId: string,
+      archiveId: string,
+    ) => Promise<VocabularyArchive | null>
+    deleteVocabularyArchive?: (notebookId: string, archiveId: string) => Promise<void>
+    loadVocabularyProgress?: (notebookId: string, archiveId: string) => Promise<VocabularyProgress>
+    saveVocabularyProgress?: (
+      notebookId: string,
+      archiveId: string,
+      progress: VocabularyProgress,
+    ) => Promise<void>
+    readVocabularyAudio?: (
+      notebookId: string,
+      archiveId: string,
+      filename: string,
+    ) => Promise<{ mime: string; data: string } | null>
   }
 }

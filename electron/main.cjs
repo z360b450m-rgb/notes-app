@@ -30,11 +30,13 @@
 //   - src/types/index.ts (数据结构定义)
 //   - src/services/db.ts (渲染进程数据库访问层)
 // ===================================================================
-const { app, BrowserWindow, Menu, ipcMain, dialog, desktopCapturer } = require('electron')
+const { app, BrowserWindow, Menu, ipcMain, dialog, desktopCapturer, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const log = require('electron-log')
 const AdmZip = require('adm-zip')
+const vocabulary = require('./plugins/english-vocabulary/main.cjs')
+const pluginRegistry = require('./plugins/registry.cjs')
 
 log.transports.file.level = 'info'
 log.transports.console.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}'
@@ -45,6 +47,7 @@ process.on('uncaughtException', (error) => {
 
 let mainWindow
 let dataDir = null
+let pendingVocabularyImportPath = null
 
 function getDefaultDataDir() {
   return path.join(app.getPath('documents'), '错题本')
@@ -354,6 +357,12 @@ ipcMain.handle('storage:deleteNotebook', (_e, id) => {
     if (fs.existsSync(nbPath)) fs.unlinkSync(nbPath)
   } catch (err) {
     log.warn(`删除笔记本文件失败: ${nbPath}`, err)
+  }
+
+  try {
+    pluginRegistry.deleteNotebookData(getDataDir(), id)
+  } catch (err) {
+    log.warn(`删除错题本插件数据失败: ${id}`, err)
   }
 })
 
@@ -706,6 +715,85 @@ ipcMain.handle('storage:importArchive', async (_e, keepReviewState) => {
     }
   }
 })
+
+function getVocabularyRoot(notebookId) {
+  return vocabulary.getArchivesRoot(getDataDir(), notebookId)
+}
+
+ipcMain.handle('plugins:isInstalled', (_event, notebookId, pluginId) => {
+  return pluginRegistry
+    .listInstalled(getDataDir(), notebookId)
+    .some((item) => item.pluginId === pluginId)
+})
+
+ipcMain.handle('plugins:listInstalled', (_event, notebookId) => {
+  return pluginRegistry.listInstalled(getDataDir(), notebookId)
+})
+
+ipcMain.handle('plugins:install', (_event, notebookId, pluginId) => {
+  return pluginRegistry.install(getDataDir(), notebookId, pluginId)
+})
+
+ipcMain.handle('plugins:uninstall', (_event, notebookId, pluginId, deleteData) => {
+  pluginRegistry.uninstall(getDataDir(), notebookId, pluginId, !!deleteData)
+})
+
+ipcMain.handle('vocabulary:openAnkiDeckLibrary', () => {
+  return shell.openExternal('https://ankiweb.net/shared/decks')
+})
+
+ipcMain.handle('vocabulary:inspectApkg', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '导入 Anki 单词包',
+    filters: [{ name: 'Anki 单词包', extensions: ['apkg'] }],
+    properties: ['openFile'],
+  })
+  if (result.canceled || result.filePaths.length === 0) {
+    pendingVocabularyImportPath = null
+    return { canceled: true }
+  }
+  const filePath = path.resolve(result.filePaths[0])
+  pendingVocabularyImportPath = filePath
+  return { canceled: false, filePath, inspection: await vocabulary.inspectApkg(filePath) }
+})
+
+ipcMain.handle(
+  'vocabulary:archiveApkg',
+  async (_event, notebookId, filePath, archiveName, mappings) => {
+    const requestedPath = path.resolve(String(filePath || ''))
+    if (!pendingVocabularyImportPath || requestedPath !== pendingVocabularyImportPath) {
+      throw new Error('请重新选择要导入的 APKG 文件')
+    }
+    try {
+      return await vocabulary.archiveApkg(
+        requestedPath,
+        getVocabularyRoot(notebookId),
+        archiveName,
+        mappings || {},
+      )
+    } finally {
+      pendingVocabularyImportPath = null
+    }
+  },
+)
+ipcMain.handle('vocabulary:listArchives', (_event, notebookId) =>
+  vocabulary.listArchives(getVocabularyRoot(notebookId)),
+)
+ipcMain.handle('vocabulary:loadArchive', (_event, notebookId, archiveId) =>
+  vocabulary.loadArchive(getVocabularyRoot(notebookId), archiveId),
+)
+ipcMain.handle('vocabulary:deleteArchive', (_event, notebookId, archiveId) =>
+  vocabulary.deleteArchive(getVocabularyRoot(notebookId), archiveId),
+)
+ipcMain.handle('vocabulary:loadProgress', (_event, notebookId, archiveId) =>
+  vocabulary.loadProgress(getVocabularyRoot(notebookId), archiveId),
+)
+ipcMain.handle('vocabulary:saveProgress', (_event, notebookId, archiveId, progress) =>
+  vocabulary.saveProgress(getVocabularyRoot(notebookId), archiveId, progress),
+)
+ipcMain.handle('vocabulary:readAudio', (_event, notebookId, archiveId, filename) =>
+  vocabulary.readAudio(getVocabularyRoot(notebookId), archiveId, filename),
+)
 
 function createWindow() {
   // Run one-time migration from old single-file format

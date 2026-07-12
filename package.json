@@ -1,6 +1,6 @@
 {
   "name": "cuotiben",
-  "version": "2.0.0",
+  "version": "2.1.7",
   "private": true,
   "description": "智能错题管理工具 - 记录错题、对比答案、高效复习",
   "author": "Nie Yulong (聂昱龙)",
@@ -17,7 +17,8 @@
     "dev": "vite",
     "build": "vite build",
     "postinstall": "patch-package",
-    "build:win:installer": "set NODE_OPTIONS=--use-system-ca && vite build && electron-builder --win nsis",
+    "build:win:release": "node scripts/build-windows-release.cjs dir",
+    "build:win:installer": "node scripts/build-windows-release.cjs installer",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
@@ -111,6 +112,7 @@
     "jszip": "^3.10.1",
     "marked": "^15.0.0",
     "pdfjs-dist": "^6.0.227",
+    "sql.js": "^1.14.1",
     "vue": "^3.5.0"
   },
   "lint-staged": {

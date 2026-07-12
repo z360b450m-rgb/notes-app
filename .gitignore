@@ -11,7 +11,9 @@ pnpm-debug.log*
 # --- 构建产物 ---
 dist/
 dist-electron/
+dist-electron-*/
 release/
+.electron-builder-cache/
 *.tsbuildinfo
 
 # --- 环境变量 (非常重要) ---
@@ -53,3 +55,15 @@ Thumbs.db
 fix_test.*
 debug.png
 PROGRESS.json
+
+# --- 本地打包核验与解包缓存 ---
+.*-package/
+.package-*-check/
+.target-package-check/
+.delete-archive-test/
+assets/
+/icon-180.png
+/icon-192.png
+/icon-512.png
+/icon.svg
+/manifest.json

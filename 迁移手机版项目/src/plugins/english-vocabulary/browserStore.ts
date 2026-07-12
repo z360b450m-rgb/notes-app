@@ -15,6 +15,24 @@ const PROGRESS = 'progress'
 const MEDIA = 'media'
 const pendingFiles = new Map<string, File>()
 
+function createUniqueId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  const randomBytes = new Uint8Array(16)
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(randomBytes)
+  } else {
+    for (let index = 0; index < randomBytes.length; index += 1) {
+      randomBytes[index] = Math.floor(Math.random() * 256)
+    }
+  }
+  randomBytes[6] = (randomBytes[6] & 0x0f) | 0x40
+  randomBytes[8] = (randomBytes[8] & 0x3f) | 0x80
+  const hex = Array.from(randomBytes, (value) => value.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
 interface StoredArchive extends VocabularyArchive {
   notebookId: string
 }
@@ -154,7 +172,7 @@ export async function inspectBrowserApkg() {
     const mappings = Object.fromEntries(
       models.map((model) => [String(model.id), autoMap(model.fields)]),
     )
-    const token = crypto.randomUUID()
+    const token = createUniqueId()
     pendingFiles.set(token, file)
     const inspection: ApkgInspection = {
       sourceFilename: file.name,
@@ -282,6 +300,28 @@ export async function loadBrowserArchive(notebookId: string, archiveId: string) 
     store.get(`${notebookId}:${archiveId}`),
   )) as StoredArchive | undefined
   if (!stored) return null
+  let repaired = false
+  for (const model of stored.models) {
+    const mapping = stored.mappings[String(model.id)] || {}
+    const inferredDetails = autoMap(model.fields).details
+    if (inferredDetails != null && mapping.details !== inferredDetails) {
+      mapping.details = inferredDetails
+      stored.mappings[String(model.id)] = mapping
+      repaired = true
+    }
+  }
+  for (const word of stored.words) {
+    const details = mapped(word.fields, stored.mappings[String(word.modelId)] || {}, 'details')
+    if (details && word.details !== details) {
+      word.details = details
+      repaired = true
+    }
+  }
+  if (repaired) {
+    await request(ARCHIVES, 'readwrite', (store) =>
+      store.put({ ...stored, storageKey: `${notebookId}:${archiveId}` }),
+    )
+  }
   const archive = { ...stored } as StoredArchive & { storageKey?: string }
   delete archive.notebookId
   delete archive.storageKey

@@ -124,6 +124,21 @@
   border-color: #2a2a28;
 }
 
+.answer-details {
+  overflow-wrap: anywhere;
+}
+.answer-details img,
+.answer-details video,
+.answer-details iframe {
+  max-width: 100%;
+  height: auto;
+}
+.answer-details table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 /* Toast animation */
 .toast-enter-active {
   animation: toast-in 0.3s ease;

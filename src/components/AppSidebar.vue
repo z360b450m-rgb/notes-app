@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // @AI-NOTE: 侧边栏组件 —— 筛选/排序/条目选择由 useFilter/useEntries
 // Hook 驱动。禁止在此实现筛选逻辑或直接操作数据库。
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, computed } from 'vue'
 import type { NoteEntry } from '@/types'
 import type { SortKey, SortDir } from '@/composables/useFilter'
 import SubjectChips from './SubjectChips.vue'
@@ -9,6 +9,7 @@ import TagDots from './TagDots.vue'
 import EntryList from './EntryList.vue'
 import TagMultiSelect from './TagMultiSelect.vue'
 import { MASTERY_LEVEL_DEFS } from '@/composables/useStats'
+import type { NotebookPluginManifest } from '@/plugins/types'
 
 const props = defineProps<{
   notebookName: string
@@ -32,6 +33,8 @@ const props = defineProps<{
   mode: 'edit' | 'review'
   selectedIds: Set<string>
   selectedCount: number
+  installedPluginIds: string[]
+  availablePlugins: NotebookPluginManifest[]
 }>()
 
 const emit = defineEmits<{
@@ -63,6 +66,8 @@ const emit = defineEmits<{
   'batch-tag': [tags: string[]]
   'batch-export': []
   'toggle-settings': []
+  'open-plugin': [pluginId: string]
+  'manage-plugins': []
 }>()
 
 const collapsed = ref(false)
@@ -82,6 +87,9 @@ const editingSource = ref<string | null>(null)
 const editSourceValue = ref('')
 const editSourceInput = ref<HTMLInputElement | null>(null)
 const deletingSource = ref<string | null>(null)
+const installedPlugins = computed(() =>
+  props.availablePlugins.filter((plugin) => props.installedPluginIds.includes(plugin.id)),
+)
 
 function startEditSource(name: string) {
   editingSource.value = name
@@ -291,7 +299,42 @@ function cancelAddSource() {
       <!-- Spacer -->
       <div class="flex-1" />
 
-      <!-- Settings -->
+      <!-- Installed plugins -->
+      <button
+        v-for="plugin in installedPlugins"
+        :key="plugin.id"
+        class="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 dark:text-brand-mid hover:text-accent hover:bg-accent/10 border border-gray-200 dark:border-[#2e2e2c] transition-all duration-200 mb-2"
+        :title="plugin.name"
+        @click="emit('open-plugin', plugin.id)"
+      >
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+        >
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z" />
+          <path d="M4 5.5v16M8 7h8M8 11h8" />
+        </svg>
+      </button>
+      <button
+        class="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 dark:text-brand-mid hover:text-accent hover:bg-accent/10 border border-gray-200 dark:border-[#2e2e2c] transition-all duration-200 mb-2"
+        title="添加或管理功能"
+        @click="emit('manage-plugins')"
+      >
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+        >
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </button>
       <button
         class="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 dark:text-brand-mid hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#1e1e1c] border border-gray-200 dark:border-[#2e2e2c] transition-all duration-200 mt-auto mb-4"
         title="设置"
@@ -912,6 +955,45 @@ function cancelAddSource() {
           @toggle-select="emit('toggle-select', $event)"
           @range-select="(ids, from, to) => emit('range-select', ids, from, to)"
         />
+      </div>
+
+      <!-- Installed notebook features -->
+      <div class="px-4 pt-3 border-t border-gray-100 dark:border-[#2e2e2c]">
+        <button
+          v-for="plugin in installedPlugins"
+          :key="plugin.id"
+          class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-[8px] text-[13px] text-brand-mid dark:text-brand-mid hover:text-brand-dark dark:hover:text-brand-light-gray hover:bg-brand-light-gray dark:hover:bg-[#2a2a28] transition-colors"
+          @click="emit('open-plugin', plugin.id)"
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z" />
+            <path d="M4 5.5v16M8 7h8M8 11h8" />
+          </svg>
+          {{ plugin.name }}
+        </button>
+        <button
+          class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-[8px] text-[13px] text-brand-mid dark:text-brand-mid hover:text-brand-dark dark:hover:text-brand-light-gray hover:bg-brand-light-gray dark:hover:bg-[#2a2a28] transition-colors"
+          @click="emit('manage-plugins')"
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          添加功能
+        </button>
       </div>
 
       <!-- Settings -->

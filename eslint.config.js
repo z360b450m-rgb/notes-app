@@ -15,6 +15,7 @@ export default [
       'public/**',
       '.vscode/**',
       '.vs/**',
+      '迁移手机版项目/**',
       '*.min.js',
       '*.min.css',
     ],
