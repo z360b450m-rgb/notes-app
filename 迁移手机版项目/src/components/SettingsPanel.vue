@@ -367,6 +367,12 @@ function save() {
           </button>
         </div>
 
+        <div
+          class="pt-4 border-t border-gray-100 text-center text-[11px] text-gray-400 dark:border-[#2e2e2c] dark:text-brand-mid"
+        >
+          移动版 2.1.6 · APKG 兼容版
+        </div>
+
         <!-- 知识库（已关闭）
         <div class="pt-4 border-t border-gray-100 dark:border-[#2e2e2c]">
           <button

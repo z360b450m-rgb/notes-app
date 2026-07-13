@@ -587,6 +587,10 @@ onUnmounted(stop)
         </svg>
         导入 APKG 词库
       </button>
+      <p class="mt-2 text-[11px] leading-5 text-[#888]">
+        若手机将 APKG 置灰，请先在文件管理器把扩展名临时改为 .zip；应用会按 APKG
+        内部结构识别并正常导入。
+      </p>
       <div
         class="mt-3 flex min-h-0 gap-2 overflow-x-auto overflow-y-hidden md:mt-6 md:block md:flex-1 md:space-y-2 md:overflow-y-auto md:overflow-x-hidden"
       >

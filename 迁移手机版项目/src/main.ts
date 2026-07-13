@@ -5,7 +5,15 @@ import './style.css'
 const app = createApp(App)
 app.mount('#app')
 
-// Service Worker registration
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(() => {})
+  if (import.meta.env.PROD) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {})
+  } else {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((registration) => registration.unregister())
+    })
+    if ('caches' in window) {
+      caches.keys().then((keys) => keys.forEach((key) => caches.delete(key)))
+    }
+  }
 }
