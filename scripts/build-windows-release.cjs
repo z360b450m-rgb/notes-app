@@ -1,11 +1,15 @@
 const path = require('path')
+const fs = require('fs')
 const { spawnSync } = require('child_process')
 const pkg = require('../package.json')
 
 const projectRoot = path.resolve(__dirname, '..')
-const outputDir = path.join('dist-electron', 'releases', `cuotiben-${pkg.version}`)
 const electronDist = path.join(projectRoot, 'node_modules', 'electron', 'dist')
+const builderCache = path.join(projectRoot, '.electron-builder-cache')
+const builderBinariesMirror = 'https://npmmirror.com/mirrors/electron-builder-binaries/'
 const target = process.argv[2] === 'installer' ? 'nsis' : 'dir'
+const releaseName = target === 'nsis' ? `cuotiben-${pkg.version}-installer` : `cuotiben-${pkg.version}`
+const outputDir = path.join('dist-electron', 'releases', releaseName)
 
 function run(command, args, extraEnv = {}) {
   const result = spawnSync(command, args, {
@@ -16,6 +20,10 @@ function run(command, args, extraEnv = {}) {
   })
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
+
+// The downloaded icon tool uses CommonJS and otherwise inherits the app's ESM package scope.
+fs.mkdirSync(builderCache, { recursive: true })
+fs.writeFileSync(path.join(builderCache, 'package.json'), '{"type":"commonjs"}\n')
 
 run('npm.cmd', ['run', 'build', '--', '--configLoader', 'runner'])
 run(
@@ -29,7 +37,9 @@ run(
   ],
   {
     NODE_OPTIONS: '--use-system-ca',
-    ELECTRON_BUILDER_CACHE: path.join(projectRoot, '.electron-builder-cache'),
+    ELECTRON_BUILDER_CACHE: builderCache,
+    ELECTRON_BUILDER_BINARIES_MIRROR:
+      process.env.ELECTRON_BUILDER_BINARIES_MIRROR || builderBinariesMirror,
   },
 )
 

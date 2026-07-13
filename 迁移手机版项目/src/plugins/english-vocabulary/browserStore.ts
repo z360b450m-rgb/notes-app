@@ -76,7 +76,8 @@ function selectFile(): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = '.apkg,application/zip'
+    // Mobile file managers often report APKG with an empty or generic MIME type.
+    input.accept = '*/*'
     input.onchange = () => resolve(input.files?.[0] ?? null)
     input.click()
   })
@@ -141,14 +142,19 @@ async function parseCollection(file: File) {
     zip.file('collection.anki21b') || zip.file('collection.anki21') || zip.file('collection.anki2')
   if (!collection) throw new Error('APKG 中没有可识别的 Anki collection 文件')
   const SQL = await initSqlJs({ locateFile: () => `${import.meta.env.BASE_URL}sql-wasm.wasm` })
-  const db = new SQL.Database(await collection.async('uint8array'))
-  return { zip, db }
+  try {
+    const db = new SQL.Database(await collection.async('uint8array'))
+    return { zip, db, collectionName: collection.name }
+  } catch {
+    throw new Error('无法读取 APKG 中的 Anki 数据库')
+  }
 }
 
 export async function inspectBrowserApkg() {
   const file = await selectFile()
   if (!file) return { canceled: true }
-  const { db } = await parseCollection(file)
+  if (!file.name.toLowerCase().endsWith('.apkg')) throw new Error('请选择 APKG 格式的词库文件')
+  const { db, collectionName } = await parseCollection(file)
   try {
     const row = db.exec('SELECT models, decks FROM col LIMIT 1')[0]?.values?.[0]
     if (!row) throw new Error('APKG 缺少模板或牌组信息')
@@ -176,7 +182,7 @@ export async function inspectBrowserApkg() {
     pendingFiles.set(token, file)
     const inspection: ApkgInspection = {
       sourceFilename: file.name,
-      collectionName: 'collection',
+      collectionName,
       models,
       decks,
       mappings,
