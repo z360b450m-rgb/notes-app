@@ -76,9 +76,14 @@ function selectFile(): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
-    // Mobile file managers often report APKG with an empty or generic MIME type.
-    input.accept = '*/*'
-    input.onchange = () => resolve(input.files?.[0] ?? null)
+    input.style.display = 'none'
+    document.body.appendChild(input)
+    const finish = (file: File | null) => {
+      input.remove()
+      resolve(file)
+    }
+    input.onchange = () => finish(input.files?.[0] ?? null)
+    input.oncancel = () => finish(null)
     input.click()
   })
 }
