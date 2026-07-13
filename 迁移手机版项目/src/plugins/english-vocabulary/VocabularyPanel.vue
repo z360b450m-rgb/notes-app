@@ -146,7 +146,7 @@ async function beginImport() {
     const result = await vocabularyService.inspect()
     if (result.canceled || !result.filePath || !result.inspection) return
     importPath.value = result.filePath
-    importName.value = result.inspection.sourceFilename.replace(/\.apkg$/i, '').trim()
+    importName.value = result.inspection.sourceFilename.replace(/\.(?:apkg|zip)$/i, '').trim()
     inspection.value = result.inspection
     mappings.value = structuredClone(result.inspection.mappings)
   } catch (error) {
@@ -527,7 +527,7 @@ onUnmounted(stop)
 
 <template>
   <div
-    class="fixed inset-0 z-50 flex flex-col bg-[#faf9f5] text-[#141413] dark:bg-[#141413] dark:text-[#faf9f5] md:flex-row"
+    class="app-safe-viewport fixed inset-0 z-50 flex flex-col bg-[#faf9f5] text-[#141413] dark:bg-[#141413] dark:text-[#faf9f5] md:flex-row"
   >
     <aside
       class="flex max-h-[42vh] w-full flex-shrink-0 flex-col border-b border-[#e8e6dc] bg-white p-4 dark:border-[#2e2e2c] dark:bg-[#1e1e1c] md:max-h-none md:w-[250px] md:border-r md:border-b-0 md:p-5"

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cuotiben-mobile-v1'
+const CACHE_NAME = 'cuotiben-mobile-v3'
 const APP_SHELL = ['./', './index.html', './manifest.json', './sql-wasm.wasm']
 
 self.addEventListener('install', (event) => {

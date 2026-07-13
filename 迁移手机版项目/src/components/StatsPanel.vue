@@ -26,7 +26,7 @@ const hueStep = computed(() => {
 
     <!-- Panel -->
     <div
-      class="fixed right-0 top-0 bottom-0 z-50 w-[340px] bg-white dark:bg-[#141413] shadow-xl border-l border-gray-100 dark:border-[#2e2e2c] overflow-y-auto"
+      class="app-safe-fixed-panel fixed z-50 w-[340px] bg-white dark:bg-[#141413] shadow-xl border-l border-gray-100 dark:border-[#2e2e2c] overflow-y-auto"
     >
       <!-- Header -->
       <div

@@ -217,7 +217,7 @@ function onWheel(e: WheelEvent) {
 <template>
   <!-- @AI-VIEW: DOM 可自由重构。样式仅限 Tailwind CSS 工具类。严禁内联 style 或自定义 CSS。 -->
   <div
-    class="flex h-screen bg-white pb-[calc(4.5rem+env(safe-area-inset-bottom))] dark:bg-[#141413] md:pb-0"
+    class="app-safe-viewport flex bg-white pb-[calc(4.5rem+env(safe-area-inset-bottom))] dark:bg-[#141413] md:pb-0"
   >
     <AppSidebar
       :notebook-name="notebookName"

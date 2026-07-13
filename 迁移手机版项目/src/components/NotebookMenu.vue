@@ -276,7 +276,7 @@ function onNotebookClick(id: string) {
 <template>
   <!-- @AI-VIEW: DOM 可自由重构。样式仅限 Tailwind CSS 工具类。严禁内联 style 或自定义 CSS。 -->
   <div
-    class="flex h-screen bg-[#faf9f5] dark:bg-[#141413] text-brand-dark dark:text-brand-light font-sans"
+    class="app-safe-viewport flex bg-[#faf9f5] dark:bg-[#141413] text-brand-dark dark:text-brand-light font-sans"
   >
     <!-- ═══════════ LEFT SIDEBAR ═══════════ -->
     <aside

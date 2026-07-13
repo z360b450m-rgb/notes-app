@@ -153,7 +153,6 @@ async function parseCollection(file: File) {
 export async function inspectBrowserApkg() {
   const file = await selectFile()
   if (!file) return { canceled: true }
-  if (!file.name.toLowerCase().endsWith('.apkg')) throw new Error('请选择 APKG 格式的词库文件')
   const { db, collectionName } = await parseCollection(file)
   try {
     const row = db.exec('SELECT models, decks FROM col LIMIT 1')[0]?.values?.[0]
@@ -257,7 +256,7 @@ export async function archiveBrowserApkg(
       storageKey: `${notebookId}:${id}`,
       notebookId,
       id,
-      name: name.trim() || file.name.replace(/\.apkg$/i, ''),
+      name: name.trim() || file.name.replace(/\.(?:apkg|zip)$/i, ''),
       sourceFilename: file.name,
       importedAt: Date.now(),
       decks,
