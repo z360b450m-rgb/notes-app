@@ -7,6 +7,16 @@ import type {
   VocabularySessionProgress,
   VocabularySettings,
 } from './types'
+import {
+  archiveBrowserApkg,
+  deleteBrowserArchive,
+  getBrowserAudioUrl,
+  inspectBrowserApkg,
+  listBrowserArchives,
+  loadBrowserArchive,
+  loadBrowserProgress,
+  saveBrowserProgress,
+} from './browserStore'
 
 export interface VocabularyArchiveSummary extends Omit<VocabularyArchive, 'words'> {
   wordCount: number
@@ -46,12 +56,13 @@ export const vocabularyService = {
   },
 
   async list(notebookId: string): Promise<VocabularyArchiveSummary[]> {
-    return window.electronAPI?.listVocabularyArchives?.(notebookId) ?? []
+    return window.electronAPI?.listVocabularyArchives
+      ? window.electronAPI.listVocabularyArchives(notebookId)
+      : listBrowserArchives(notebookId)
   },
 
   async inspect(): Promise<{ canceled?: boolean; filePath?: string; inspection?: ApkgInspection }> {
-    if (!window.electronAPI?.inspectApkg) throw new Error('请在桌面版中导入 APKG 文件')
-    return window.electronAPI.inspectApkg()
+    return window.electronAPI?.inspectApkg ? window.electronAPI.inspectApkg() : inspectBrowserApkg()
   },
 
   async archive(
@@ -60,23 +71,28 @@ export const vocabularyService = {
     archiveName: string,
     mappings: Record<string, VocabularyFieldMapping>,
   ) {
-    if (!window.electronAPI?.archiveApkg) throw new Error('请在桌面版中导入 APKG 文件')
-    return window.electronAPI.archiveApkg(notebookId, filePath, archiveName, toIpcData(mappings))
+    return window.electronAPI?.archiveApkg
+      ? window.electronAPI.archiveApkg(notebookId, filePath, archiveName, toIpcData(mappings))
+      : archiveBrowserApkg(notebookId, filePath, archiveName, toIpcData(mappings))
   },
 
   async load(notebookId: string, archiveId: string): Promise<VocabularyArchive | null> {
-    return window.electronAPI?.loadVocabularyArchive?.(notebookId, archiveId) ?? null
+    return window.electronAPI?.loadVocabularyArchive
+      ? window.electronAPI.loadVocabularyArchive(notebookId, archiveId)
+      : loadBrowserArchive(notebookId, archiveId)
   },
 
   async delete(notebookId: string, archiveId: string): Promise<void> {
     const deleteArchive = window.electronAPI?.deleteVocabularyArchive
-    if (!deleteArchive) throw new Error('当前应用版本不支持删除词库，请安装最新版')
-    await deleteArchive(notebookId, archiveId)
+    if (deleteArchive) return deleteArchive(notebookId, archiveId)
+    await deleteBrowserArchive(notebookId, archiveId)
   },
 
   async loadProgress(notebookId: string, archiveId: string): Promise<VocabularyProgress> {
     return (
-      (await window.electronAPI?.loadVocabularyProgress?.(notebookId, archiveId)) ?? {
+      (await (window.electronAPI?.loadVocabularyProgress
+        ? window.electronAPI.loadVocabularyProgress(notebookId, archiveId)
+        : loadBrowserProgress(notebookId, archiveId))) ?? {
         archiveId,
         updatedAt: Date.now(),
         words: {},
@@ -95,7 +111,9 @@ export const vocabularyService = {
     archiveId: string,
     progress: VocabularyProgress,
   ): Promise<void> {
-    await window.electronAPI?.saveVocabularyProgress?.(notebookId, archiveId, toIpcData(progress))
+    if (window.electronAPI?.saveVocabularyProgress)
+      return window.electronAPI.saveVocabularyProgress(notebookId, archiveId, toIpcData(progress))
+    await saveBrowserProgress(notebookId, archiveId, toIpcData(progress))
   },
 
   async getAudioUrl(
@@ -103,7 +121,9 @@ export const vocabularyService = {
     archiveId: string,
     filename: string,
   ): Promise<string | null> {
-    const audio = await window.electronAPI?.readVocabularyAudio?.(notebookId, archiveId, filename)
+    if (!window.electronAPI?.readVocabularyAudio)
+      return getBrowserAudioUrl(notebookId, archiveId, filename)
+    const audio = await window.electronAPI.readVocabularyAudio(notebookId, archiveId, filename)
     return audio ? `data:${audio.mime};base64,${audio.data}` : null
   },
 }

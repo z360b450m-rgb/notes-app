@@ -156,7 +156,7 @@ async function beginImport() {
 
 async function openAnkiDeckLibrary() {
   if (!window.electronAPI?.openAnkiDeckLibrary) {
-    message.value = '词库资源库仅支持在桌面版中打开'
+    window.open('https://ankiweb.net/shared/decks', '_blank', 'noopener,noreferrer')
     return
   }
   try {
