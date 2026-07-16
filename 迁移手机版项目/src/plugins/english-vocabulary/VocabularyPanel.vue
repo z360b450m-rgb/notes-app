@@ -72,6 +72,9 @@ const deletingArchive = ref(false)
 const newArchiveOpen = ref(false)
 const newArchiveName = ref('')
 const addWordOpen = ref(false)
+const editingWordId = ref<string | null>(null)
+const deleteWordOpen = ref(false)
+const deletingWord = ref<VocabularyWord | null>(null)
 const wordDraft = ref({
   word: '', phonetic: '', meaning: '', exampleEn: '', exampleZh: '', note: '', details: '', tags: '',
 })
@@ -189,8 +192,19 @@ async function createArchive() {
 }
 
 function openAddWord() {
+  editingWordId.value = null
   wordDraft.value = {
     word: '', phonetic: '', meaning: '', exampleEn: '', exampleZh: '', note: '', details: '', tags: '',
+  }
+  addWordOpen.value = true
+}
+
+function openEditWord(word: VocabularyWord) {
+  editingWordId.value = word.id
+  wordDraft.value = {
+    word: plainText(word.word), phonetic: plainText(word.phonetic), meaning: plainText(word.meaning),
+    exampleEn: plainText(word.exampleEn), exampleZh: plainText(word.exampleZh), note: plainText(word.note),
+    details: plainText(word.details || ''), tags: word.tags.join(', '),
   }
   addWordOpen.value = true
 }
@@ -199,8 +213,7 @@ async function addWord() {
   if (!archive.value || !wordDraft.value.word.trim() || !wordDraft.value.meaning.trim()) return
   const now = Date.now()
   const draft = wordDraft.value
-  archive.value.words.push({
-    id: `manual-${now}-${Math.random().toString(36).slice(2, 8)}`,
+  const wordData = {
     noteId: now,
     deckId: 0,
     modelId: 0,
@@ -214,16 +227,63 @@ async function addWord() {
     details: draft.details.trim(),
     audioFiles: [],
     tags: draft.tags.split(/[，,\s]+/).map((tag) => tag.trim()).filter(Boolean),
-  })
+  }
+  const existingIndex = editingWordId.value ? archive.value.words.findIndex((word) => word.id === editingWordId.value) : -1
+  const original = existingIndex >= 0 ? archive.value.words[existingIndex] : null
+  const word = { id: original?.id ?? `manual-${now}-${Math.random().toString(36).slice(2, 8)}`, ...wordData }
+  if (existingIndex >= 0) archive.value.words.splice(existingIndex, 1, word)
+  else archive.value.words.push(word)
   try {
     await vocabularyService.saveArchive(props.notebookId, archive.value.id, archive.value)
-    await ensureDailyPlan(true)
+    if (!editingWordId.value && progress.value) {
+      const plan = progress.value.dailyPlan
+      if (plan?.date === localDateKey() && !plan.wordIds.includes(word.id)) {
+        plan.newWordIds.push(word.id)
+        plan.wordIds.push(word.id)
+        await vocabularyService.saveProgress(props.notebookId, archive.value.id, progress.value)
+      } else await ensureDailyPlan(true)
+    }
     await reloadArchives()
     addWordOpen.value = false
-    message.value = `已添加单词“${draft.word.trim()}”`
+    message.value = editingWordId.value ? `已更新单词“${draft.word.trim()}”` : `已添加单词“${draft.word.trim()}”`
+    editingWordId.value = null
   } catch (error) {
-    archive.value.words.pop()
-    message.value = error instanceof Error ? error.message : '新增单词失败'
+    if (existingIndex >= 0 && original) archive.value.words.splice(existingIndex, 1, original)
+    else archive.value.words.pop()
+    message.value = error instanceof Error ? error.message : '保存单词失败'
+  }
+}
+
+async function confirmDeleteWord() {
+  if (!archive.value || !deletingWord.value) return
+  const word = deletingWord.value
+  const index = archive.value.words.findIndex((item) => item.id === word.id)
+  if (index < 0) return
+  archive.value.words.splice(index, 1)
+  try {
+    await vocabularyService.saveArchive(props.notebookId, archive.value.id, archive.value)
+    if (progress.value) {
+      delete progress.value.words[word.id]
+      for (const session of Object.values(progress.value.sessions)) {
+        if (!session) continue
+        session.sessionOrder = session.sessionOrder.filter((id) => id !== word.id)
+        session.completedWordIds = session.completedWordIds.filter((id) => id !== word.id)
+      }
+      const plan = progress.value.dailyPlan
+      if (plan) {
+        plan.wordIds = plan.wordIds.filter((id) => id !== word.id)
+        plan.newWordIds = plan.newWordIds.filter((id) => id !== word.id)
+        plan.dueWordIds = plan.dueWordIds.filter((id) => id !== word.id)
+      }
+      await vocabularyService.saveProgress(props.notebookId, archive.value.id, progress.value)
+    }
+    deletingWord.value = null
+    deleteWordOpen.value = false
+    await reloadArchives()
+    message.value = `已删除单词“${plainText(word.word)}”`
+  } catch (error) {
+    archive.value.words.splice(index, 0, word)
+    message.value = error instanceof Error ? error.message : '删除单词失败'
   }
 }
 
@@ -1029,9 +1089,9 @@ onUnmounted(() => {
         </div>
         <div class="mt-5 overflow-hidden border-y border-[#e8e6dc] dark:border-[#333]">
           <div
-            class="grid grid-cols-[minmax(150px,1fr)_minmax(220px,2fr)_130px] gap-4 bg-[#f5f4ef] px-4 py-2 text-xs font-semibold text-[#777] dark:bg-[#252523]"
+            class="grid grid-cols-[minmax(130px,1fr)_minmax(180px,2fr)_100px_96px] gap-4 bg-[#f5f4ef] px-4 py-2 text-xs font-semibold text-[#777] dark:bg-[#252523]"
           >
-            <span>单词</span><span>释义</span><span>状态</span>
+            <span>单词</span><span>释义</span><span>状态</span><span>操作</span>
           </div>
           <div
             v-if="pagedVocabularyWords.length === 0"
@@ -1042,7 +1102,7 @@ onUnmounted(() => {
           <div
             v-for="word in pagedVocabularyWords"
             :key="word.id"
-            class="grid grid-cols-[minmax(150px,1fr)_minmax(220px,2fr)_130px] gap-4 border-t border-[#e8e6dc] px-4 py-3 text-sm dark:border-[#333]"
+            class="grid grid-cols-[minmax(130px,1fr)_minmax(180px,2fr)_100px_96px] gap-4 border-t border-[#e8e6dc] px-4 py-3 text-sm dark:border-[#333]"
           >
             <div class="min-w-0">
               <strong class="block truncate" v-html="cleanHtml(word.word)" /><span
@@ -1053,6 +1113,10 @@ onUnmounted(() => {
             </div>
             <div class="min-w-0 break-words leading-6" v-html="cleanHtml(word.meaning)" />
             <span class="text-xs text-[#888]">{{ wordStatus(word.id) }}</span>
+            <div class="flex items-start gap-2 text-xs">
+              <button class="text-[#788c5d] hover:underline" @click="openEditWord(word)">编辑</button>
+              <button class="text-red-500 hover:underline" @click="deletingWord = word; deleteWordOpen = true">删除</button>
+            </div>
           </div>
         </div>
         <div class="mt-4 flex items-center justify-between text-sm text-[#888]">
@@ -1187,17 +1251,14 @@ onUnmounted(() => {
                 显示翻译和注释
               </button>
               <div v-else class="break-words">
-                <div v-if="currentWord.details">
-                  <h3 class="mb-3 text-xs font-bold text-[#888]">答案后详解</h3>
-                  <div
-                    class="answer-details text-sm leading-7"
-                    v-html="cleanHtml(currentWord.details)"
-                  />
-                </div>
-                <div v-else class="space-y-5">
+                <div class="space-y-5">
                   <div>
                     <h3 class="mb-2 text-xs font-bold text-[#888]">中文释义</h3>
                     <div class="leading-7" v-html="cleanHtml(currentWord.meaning)" />
+                  </div>
+                  <div v-if="currentWord.details">
+                    <h3 class="mb-2 text-xs font-bold text-[#888]">答案后详解</h3>
+                    <div class="answer-details text-sm leading-7" v-html="cleanHtml(currentWord.details)" />
                   </div>
                   <div v-if="currentWord.exampleEn">
                     <h3 class="mb-2 text-xs font-bold text-[#888]">英语例句</h3>
@@ -1273,15 +1334,12 @@ onUnmounted(() => {
                       </svg>
                     </button>
                   </div>
-                  <div v-if="currentWord.details" class="mt-5 border-t border-current/10 pt-4">
-                    <h3 class="mb-2 text-xs font-bold text-[#888]">答案后详解</h3>
-                    <div
-                      class="answer-details break-words text-sm leading-7"
-                      v-html="cleanHtml(currentWord.details)"
-                    />
-                  </div>
-                  <div v-else class="mt-4 space-y-4">
+                  <div class="mt-4 space-y-4">
                     <div class="break-words" v-html="cleanHtml(currentWord.meaning)" />
+                    <div v-if="currentWord.details">
+                      <h3 class="mb-1 text-xs font-bold text-[#888]">答案后详解</h3>
+                      <div class="answer-details break-words text-sm leading-7" v-html="cleanHtml(currentWord.details)" />
+                    </div>
                     <div v-if="currentWord.exampleEn">
                       <h3 class="mb-1 text-xs font-bold text-[#888]">英语例句</h3>
                       <div
@@ -1363,7 +1421,7 @@ onUnmounted(() => {
         class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[8px] bg-white p-5 text-[#141413] shadow-xl dark:bg-[#1e1e1c] dark:text-[#faf9f5] sm:p-6"
         @submit.prevent="addWord"
       >
-        <h2 class="text-lg font-bold">新增单词</h2>
+        <h2 class="text-lg font-bold">{{ editingWordId ? '编辑单词' : '新增单词' }}</h2>
         <div class="mt-5 grid gap-4 sm:grid-cols-2">
           <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">英语单词 *</span><input v-model="wordDraft.word" autofocus class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
           <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">音标</span><input v-model="wordDraft.phonetic" class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
@@ -1375,8 +1433,8 @@ onUnmounted(() => {
           <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">标签（逗号或空格分隔）</span><input v-model="wordDraft.tags" class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
         </div>
         <div class="mt-6 flex justify-end gap-2">
-          <button type="button" class="rounded-[8px] px-4 py-2 text-[#777]" @click="addWordOpen = false">取消</button>
-          <button class="rounded-[8px] bg-[#788c5d] px-5 py-2 text-white disabled:opacity-50" :disabled="!wordDraft.word.trim() || !wordDraft.meaning.trim()">保存单词</button>
+          <button type="button" class="rounded-[8px] px-4 py-2 text-[#777]" @click="addWordOpen = false; editingWordId = null">取消</button>
+          <button class="rounded-[8px] bg-[#788c5d] px-5 py-2 text-white disabled:opacity-50" :disabled="!wordDraft.word.trim() || !wordDraft.meaning.trim()">{{ editingWordId ? '保存修改' : '保存单词' }}</button>
         </div>
       </form>
     </div>
@@ -1439,6 +1497,14 @@ onUnmounted(() => {
             {{ busy ? '正在归档...' : '确认并归档' }}
           </button>
         </div>
+      </div>
+    </div>
+
+    <div v-if="deleteWordOpen && deletingWord" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" @click.self="deleteWordOpen = false">
+      <div class="w-full max-w-sm rounded-[8px] bg-white p-6 text-[#141413] shadow-xl dark:bg-[#1e1e1c] dark:text-[#faf9f5]">
+        <h2 class="text-lg font-bold">删除单词？</h2>
+        <p class="mt-3 text-sm text-[#777]">“{{ plainText(deletingWord.word) }}”将从当前词库和学习计划中移除。</p>
+        <div class="mt-6 flex justify-end gap-2"><button class="rounded-[8px] px-4 py-2 text-[#777]" @click="deleteWordOpen = false">取消</button><button class="rounded-[8px] bg-red-600 px-5 py-2 text-white" @click="confirmDeleteWord">删除</button></div>
       </div>
     </div>
 
