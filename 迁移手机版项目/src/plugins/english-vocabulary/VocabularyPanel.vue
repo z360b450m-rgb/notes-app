@@ -69,8 +69,22 @@ const translationRetryCount = computed(() => {
 const curveSettingsOpen = ref(false)
 const deleteArchiveOpen = ref(false)
 const deletingArchive = ref(false)
+const newArchiveOpen = ref(false)
+const newArchiveName = ref('')
+const addWordOpen = ref(false)
+const wordDraft = ref({
+  word: '', phonetic: '', meaning: '', exampleEn: '', exampleZh: '', note: '', details: '', tags: '',
+})
 const curveIntervalsDraft = ref<number[]>([])
 const wrongRetryDraft = ref(10)
+const todayPreviewOpen = ref(false)
+const todayPlanWords = computed(() => {
+  if (!archive.value) return []
+  const wordsById = new Map(archive.value.words.map((word) => [word.id, word]))
+  return (progress.value?.dailyPlan?.wordIds ?? [])
+    .map((id) => wordsById.get(id))
+    .filter((word): word is VocabularyWord => !!word)
+})
 const todayModeProgress = computed(() => {
   const planIds = progress.value?.dailyPlan?.wordIds ?? []
   return (['learn', 'zh-to-en', 'en-to-zh'] as VocabularySessionMode[]).map((mode) => {
@@ -151,6 +165,65 @@ async function beginImport() {
     mappings.value = structuredClone(result.inspection.mappings)
   } catch (error) {
     message.value = error instanceof Error ? error.message : '无法读取 APKG 文件'
+  }
+}
+
+async function createArchive() {
+  const name = newArchiveName.value.trim()
+  if (!name || busy.value) return
+  busy.value = true
+  try {
+    archive.value = await vocabularyService.createArchive(props.notebookId, name)
+    progress.value = await vocabularyService.loadProgress(props.notebookId, archive.value.id)
+    newArchiveName.value = ''
+    newArchiveOpen.value = false
+    view.value = 'library'
+    await reloadArchives()
+    await ensureDailyPlan(true)
+    message.value = `已新建词库“${name}”`
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : '新建词库失败'
+  } finally {
+    busy.value = false
+  }
+}
+
+function openAddWord() {
+  wordDraft.value = {
+    word: '', phonetic: '', meaning: '', exampleEn: '', exampleZh: '', note: '', details: '', tags: '',
+  }
+  addWordOpen.value = true
+}
+
+async function addWord() {
+  if (!archive.value || !wordDraft.value.word.trim() || !wordDraft.value.meaning.trim()) return
+  const now = Date.now()
+  const draft = wordDraft.value
+  archive.value.words.push({
+    id: `manual-${now}-${Math.random().toString(36).slice(2, 8)}`,
+    noteId: now,
+    deckId: 0,
+    modelId: 0,
+    fields: [],
+    word: draft.word.trim(),
+    phonetic: draft.phonetic.trim(),
+    meaning: draft.meaning.trim(),
+    exampleEn: draft.exampleEn.trim(),
+    exampleZh: draft.exampleZh.trim(),
+    note: draft.note.trim(),
+    details: draft.details.trim(),
+    audioFiles: [],
+    tags: draft.tags.split(/[，,\s]+/).map((tag) => tag.trim()).filter(Boolean),
+  })
+  try {
+    await vocabularyService.saveArchive(props.notebookId, archive.value.id, archive.value)
+    await ensureDailyPlan(true)
+    await reloadArchives()
+    addWordOpen.value = false
+    message.value = `已添加单词“${draft.word.trim()}”`
+  } catch (error) {
+    archive.value.words.pop()
+    message.value = error instanceof Error ? error.message : '新增单词失败'
   }
 }
 
@@ -362,6 +435,19 @@ async function startTodaySession(nextView: 'learn' | 'review', mode?: Vocabulary
   await saveSessionProgress()
 }
 
+async function previewTodayWord(wordId: string) {
+  await startTodaySession('learn')
+  const targetIndex = sessionWords.value.findIndex((word) => word.id === wordId)
+  if (targetIndex < 0) return
+  currentIndex.value = targetIndex
+  answer.value = ''
+  checked.value = false
+  submittedAnswerCorrect.value = false
+  revealed.value = false
+  sessionComplete.value = false
+  await saveSessionProgress()
+}
+
 async function saveSessionProgress(completedWordId?: string) {
   if (!archive.value || !progress.value || !sessionWords.value.length) return
   const mode = sessionMode.value
@@ -408,6 +494,17 @@ async function nextWord() {
   submittedAnswerCorrect.value = false
   revealed.value = false
   await saveSessionProgress(completedWordId)
+}
+
+async function previousWord() {
+  if (!sessionWords.value.length || currentIndex.value <= 0) return
+  stop()
+  currentIndex.value -= 1
+  answer.value = ''
+  checked.value = false
+  submittedAnswerCorrect.value = false
+  revealed.value = false
+  await saveSessionProgress()
 }
 
 function normalizedEnglish(value: string) {
@@ -521,8 +618,34 @@ function wordStatus(wordId: string) {
   return `${new Date(item.dueAt).toLocaleDateString()} 复习`
 }
 
-onMounted(reloadArchives)
-onUnmounted(stop)
+function handleSessionShortcut(event: KeyboardEvent) {
+  if (
+    event.key !== 'Enter' ||
+    event.repeat ||
+    event.isComposing ||
+    !['learn', 'review'].includes(view.value) ||
+    (view.value === 'review' && !checked.value) ||
+    sessionComplete.value ||
+    busy.value ||
+    inspection.value ||
+    curveSettingsOpen.value ||
+    deleteArchiveOpen.value ||
+    newArchiveOpen.value ||
+    addWordOpen.value
+  )
+    return
+  event.preventDefault()
+  void nextWord()
+}
+
+onMounted(() => {
+  void reloadArchives()
+  window.addEventListener('keydown', handleSessionShortcut)
+})
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleSessionShortcut)
+  stop()
+})
 </script>
 
 <template>
@@ -591,6 +714,13 @@ onUnmounted(stop)
         若手机将 APKG 置灰，请先在文件管理器把扩展名临时改为 .zip；应用会按 APKG
         内部结构识别并正常导入。
       </p>
+      <button
+        class="mt-2 flex w-full items-center justify-center gap-2 rounded-[8px] border border-[#788c5d] px-4 py-2.5 text-sm font-medium text-[#65784d] hover:bg-[#f3f6ef] dark:hover:bg-[#20251c]"
+        @click="newArchiveOpen = true"
+      >
+        <span class="text-lg leading-none">＋</span>
+        新建词库
+      </button>
       <div
         class="mt-3 flex min-h-0 gap-2 overflow-x-auto overflow-y-hidden md:mt-6 md:block md:flex-1 md:space-y-2 md:overflow-y-auto md:overflow-x-hidden"
       >
@@ -693,6 +823,13 @@ onUnmounted(stop)
               <path d="M4 6h16M4 12h16M4 18h16" />
             </svg>
             全部单词
+          </button>
+          <button
+            class="flex items-center gap-2 rounded-[8px] bg-[#788c5d] px-3 py-2 text-sm font-medium text-white hover:bg-[#65784d]"
+            @click="openAddWord"
+          >
+            <span class="text-base leading-none">＋</span>
+            新增单词
           </button>
           <button
             class="flex h-9 w-9 items-center justify-center rounded-[8px] border border-[#ddd] text-[#999] hover:border-red-400 hover:bg-red-50 hover:text-red-600 dark:border-[#444] dark:hover:bg-red-950/20"
@@ -803,6 +940,45 @@ onUnmounted(stop)
               >今日计划 + {{ translationRetryCount }} 个后续回炉词</span
             >
           </button>
+        </div>
+        <div class="mt-4 border-t border-[#e8e6dc] pt-4 dark:border-[#333]">
+          <button
+            class="flex w-full items-center justify-between gap-3 text-left text-sm font-medium text-[#788c5d]"
+            type="button"
+            :aria-expanded="todayPreviewOpen"
+            @click="todayPreviewOpen = !todayPreviewOpen"
+          >
+            <span>预览今日单词（{{ todayPlanWords.length }}）</span>
+            <svg
+              class="h-4 w-4 transition-transform"
+              :class="{ 'rotate-180': todayPreviewOpen }"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          <div v-if="todayPreviewOpen" class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <button
+              v-for="(word, index) in todayPlanWords"
+              :key="word.id"
+              class="flex min-w-0 items-center gap-3 rounded-[8px] border border-[#e8e6dc] bg-white px-3 py-2.5 text-left transition hover:border-[#d97757] hover:bg-[#fdfaf6] dark:border-[#333] dark:bg-[#1e1e1c] dark:hover:bg-[#2a2723]"
+              type="button"
+              @click="previewTodayWord(word.id)"
+            >
+              <span class="shrink-0 text-xs tabular-nums text-[#999]">{{ index + 1 }}</span>
+              <span class="min-w-0">
+                <strong class="block truncate text-sm">{{ plainText(word.word) }}</strong>
+                <span class="block truncate text-xs text-[#888]">{{ plainText(word.meaning) }}</span>
+              </span>
+              <svg class="ml-auto h-4 w-4 shrink-0 text-[#b5b5ad]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </button>
+            <p v-if="!todayPlanWords.length" class="text-sm text-[#888]">今天暂时没有安排单词。</p>
+          </div>
         </div>
       </section>
 
@@ -922,7 +1098,25 @@ onUnmounted(stop)
         </button>
       </section>
 
-      <section v-else-if="currentWord" class="mx-auto max-w-3xl">
+      <section v-else-if="currentWord" class="relative mx-auto max-w-3xl px-12 sm:px-0">
+        <button
+          class="absolute left-0 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-[#d97757]/30 bg-white/95 text-[#d97757] shadow-lg transition hover:scale-105 hover:bg-[#fdf0e8] disabled:cursor-not-allowed disabled:opacity-30 dark:bg-[#1e1e1c] dark:hover:bg-[#2e2018] sm:-left-16"
+          :disabled="currentIndex <= 0"
+          title="上一个"
+          aria-label="上一个单词"
+          @click="previousWord"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 18-6-6 6-6" /></svg>
+        </button>
+        <button
+          class="absolute right-0 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-[#d97757]/30 bg-white/95 text-[#d97757] shadow-lg transition hover:scale-105 hover:bg-[#fdf0e8] disabled:cursor-not-allowed disabled:opacity-30 dark:bg-[#1e1e1c] dark:hover:bg-[#2e2018] sm:-right-16"
+          :disabled="view === 'review' && !checked"
+          title="下一个"
+          aria-label="下一个单词"
+          @click="nextWord"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m9 18 6-6-6-6" /></svg>
+        </button>
         <div class="mb-5 flex items-center justify-between text-sm">
           <button class="flex items-center gap-1 text-[#788c5d]" @click="view = 'library'">
             <svg
@@ -1027,8 +1221,8 @@ onUnmounted(stop)
               <input
                 v-model="answer"
                 class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-4 py-3 outline-none focus:border-[#d97757] dark:border-[#444]"
-                :disabled="checked"
-                @keydown.enter="checked ? nextWord() : checkAnswer()"
+                :readonly="checked"
+                @keydown.enter.stop.prevent="checked ? nextWord() : checkAnswer()"
               />
               <div
                 v-if="checked"
@@ -1109,23 +1303,83 @@ onUnmounted(stop)
                   </div>
                 </div>
               </div>
+              <div
+                v-if="checked"
+                class="mt-4 flex items-center justify-center gap-2 rounded-[8px] border border-[#d97757]/40 bg-[#fdf0e8] px-4 py-2.5 text-sm font-semibold text-[#a85335] dark:bg-[#2e2018] dark:text-[#f0c4a8]"
+              >
+                按
+                <kbd class="rounded border border-current/30 bg-white/70 px-2 py-0.5 font-mono dark:bg-black/20"
+                  >Enter ↵</kbd
+                >
+                进入下一题
+              </div>
               <button
                 class="mt-5 w-full rounded-[8px] bg-[#d97757] py-3 font-medium text-white disabled:opacity-50"
                 :disabled="!checked && !answer.trim()"
                 @click="checked ? nextWord() : checkAnswer()"
               >
-                {{ checked ? '下一个' : '检查答案' }}
+                {{ checked ? '下一个 · Enter ↵' : '检查答案' }}
               </button>
             </template>
           </div>
         </div>
-        <div v-if="view === 'learn'" class="mt-5 flex justify-end">
+        <div v-if="view === 'learn'" class="mt-5 flex items-center justify-between gap-3">
+          <button class="rounded-[8px] border border-[#ddd] px-5 py-2.5 text-[#777] disabled:opacity-40 dark:border-[#444]" :disabled="currentIndex <= 0" @click="previousWord">
+            上一个
+          </button>
+          <span class="hidden text-sm font-semibold text-[#a85335] sm:block">按 <kbd class="rounded border border-[#d97757]/30 bg-[#fdf0e8] px-2 py-0.5 font-mono dark:bg-[#2e2018]">Enter ↵</kbd> 下一词</span>
           <button class="rounded-[8px] bg-[#d97757] px-6 py-2.5 text-white" @click="nextWord">
-            下一个
+            下一个 · Enter ↵
           </button>
         </div>
       </section>
     </main>
+
+    <div
+      v-if="newArchiveOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+      @click.self="!busy && (newArchiveOpen = false)"
+    >
+      <form
+        class="w-full max-w-md rounded-[8px] bg-white p-6 text-[#141413] shadow-xl dark:bg-[#1e1e1c] dark:text-[#faf9f5]"
+        @submit.prevent="createArchive"
+      >
+        <h2 class="text-lg font-bold">新建词库</h2>
+        <p class="mt-1 text-sm text-[#888]">创建空白词库后，可逐个添加单词。</p>
+        <input v-model="newArchiveName" autofocus maxlength="80" placeholder="例如：雅思核心词汇" class="mt-5 w-full rounded-[8px] border border-[#ddd] bg-transparent px-4 py-3 outline-none focus:border-[#d97757] dark:border-[#444]" />
+        <div class="mt-6 flex justify-end gap-2">
+          <button type="button" class="rounded-[8px] px-4 py-2 text-[#777]" @click="newArchiveOpen = false">取消</button>
+          <button class="rounded-[8px] bg-[#d97757] px-5 py-2 text-white disabled:opacity-50" :disabled="busy || !newArchiveName.trim()">{{ busy ? '正在创建...' : '创建' }}</button>
+        </div>
+      </form>
+    </div>
+
+    <div
+      v-if="addWordOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+      @click.self="addWordOpen = false"
+    >
+      <form
+        class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[8px] bg-white p-5 text-[#141413] shadow-xl dark:bg-[#1e1e1c] dark:text-[#faf9f5] sm:p-6"
+        @submit.prevent="addWord"
+      >
+        <h2 class="text-lg font-bold">新增单词</h2>
+        <div class="mt-5 grid gap-4 sm:grid-cols-2">
+          <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">英语单词 *</span><input v-model="wordDraft.word" autofocus class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
+          <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">音标</span><input v-model="wordDraft.phonetic" class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
+          <label class="text-sm sm:col-span-2"><span class="mb-1 block text-xs text-[#777]">中文释义 *</span><textarea v-model="wordDraft.meaning" rows="2" class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
+          <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">英语例句</span><textarea v-model="wordDraft.exampleEn" rows="3" class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
+          <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">例句翻译</span><textarea v-model="wordDraft.exampleZh" rows="3" class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
+          <label class="text-sm sm:col-span-2"><span class="mb-1 block text-xs text-[#777]">答案后详解</span><textarea v-model="wordDraft.details" rows="5" class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
+          <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">注释</span><textarea v-model="wordDraft.note" rows="2" class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
+          <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">标签（逗号或空格分隔）</span><input v-model="wordDraft.tags" class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
+        </div>
+        <div class="mt-6 flex justify-end gap-2">
+          <button type="button" class="rounded-[8px] px-4 py-2 text-[#777]" @click="addWordOpen = false">取消</button>
+          <button class="rounded-[8px] bg-[#788c5d] px-5 py-2 text-white disabled:opacity-50" :disabled="!wordDraft.word.trim() || !wordDraft.meaning.trim()">保存单词</button>
+        </div>
+      </form>
+    </div>
 
     <div
       v-if="inspection"

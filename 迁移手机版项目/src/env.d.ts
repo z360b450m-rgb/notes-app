@@ -65,6 +65,15 @@ interface Window {
       notebookId: string,
       archiveId: string,
     ) => Promise<VocabularyArchive | null>
+    createVocabularyArchive?: (
+      notebookId: string,
+      name: string,
+    ) => Promise<VocabularyArchive>
+    saveVocabularyArchive?: (
+      notebookId: string,
+      archiveId: string,
+      archive: VocabularyArchive,
+    ) => Promise<void>
     deleteVocabularyArchive?: (notebookId: string, archiveId: string) => Promise<void>
     loadVocabularyProgress?: (notebookId: string, archiveId: string) => Promise<VocabularyProgress>
     saveVocabularyProgress?: (

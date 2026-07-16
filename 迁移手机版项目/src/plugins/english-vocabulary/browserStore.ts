@@ -37,6 +37,10 @@ interface StoredArchive extends VocabularyArchive {
   notebookId: string
 }
 
+function plainData<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
@@ -305,6 +309,37 @@ export async function listBrowserArchives(notebookId: string): Promise<Vocabular
     .sort((a, b) => b.importedAt - a.importedAt)
 }
 
+export async function createBrowserArchive(
+  notebookId: string,
+  name: string,
+): Promise<VocabularyArchive> {
+  const id = `manual-${createUniqueId()}`
+  const archive: VocabularyArchive = {
+    id,
+    name: name.trim(),
+    sourceFilename: '',
+    importedAt: Date.now(),
+    decks: [{ id: 0, name: '手动词库' }],
+    models: [],
+    mappings: {},
+    words: [],
+  }
+  await saveBrowserArchive(notebookId, archive)
+  return archive
+}
+
+export async function saveBrowserArchive(
+  notebookId: string,
+  archive: VocabularyArchive,
+): Promise<void> {
+  const stored = plainData({
+    ...archive,
+    notebookId,
+    storageKey: `${notebookId}:${archive.id}`,
+  })
+  await request(ARCHIVES, 'readwrite', (store) => store.put(stored))
+}
+
 export async function loadBrowserArchive(notebookId: string, archiveId: string) {
   const stored = (await request(ARCHIVES, 'readonly', (store) =>
     store.get(`${notebookId}:${archiveId}`),
@@ -329,7 +364,7 @@ export async function loadBrowserArchive(notebookId: string, archiveId: string) 
   }
   if (repaired) {
     await request(ARCHIVES, 'readwrite', (store) =>
-      store.put({ ...stored, storageKey: `${notebookId}:${archiveId}` }),
+      store.put(plainData({ ...stored, storageKey: `${notebookId}:${archiveId}` })),
     )
   }
   const archive = { ...stored } as StoredArchive & { storageKey?: string }
@@ -382,7 +417,13 @@ export async function saveBrowserProgress(
   progress: VocabularyProgress,
 ) {
   await request(PROGRESS, 'readwrite', (store) =>
-    store.put({ ...progress, storageKey: `${notebookId}:${archiveId}`, updatedAt: Date.now() }),
+    store.put(
+      plainData({
+        ...progress,
+        storageKey: `${notebookId}:${archiveId}`,
+        updatedAt: Date.now(),
+      }),
+    ),
   )
 }
 

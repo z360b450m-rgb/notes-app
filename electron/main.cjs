@@ -782,6 +782,12 @@ ipcMain.handle('vocabulary:listArchives', (_event, notebookId) =>
 ipcMain.handle('vocabulary:loadArchive', (_event, notebookId, archiveId) =>
   vocabulary.loadArchive(getVocabularyRoot(notebookId), archiveId),
 )
+ipcMain.handle('vocabulary:createArchive', (_event, notebookId, name) =>
+  vocabulary.createArchive(getVocabularyRoot(notebookId), name),
+)
+ipcMain.handle('vocabulary:saveArchive', (_event, notebookId, archiveId, archive) =>
+  vocabulary.saveArchive(getVocabularyRoot(notebookId), archiveId, archive),
+)
 ipcMain.handle('vocabulary:deleteArchive', (_event, notebookId, archiveId) =>
   vocabulary.deleteArchive(getVocabularyRoot(notebookId), archiveId),
 )

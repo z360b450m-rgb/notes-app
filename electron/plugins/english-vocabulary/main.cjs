@@ -373,6 +373,47 @@ function loadArchive(vocabularyRoot, archiveId) {
   return archive
 }
 
+function createArchive(vocabularyRoot, requestedName) {
+  const name = String(requestedName || '').trim().slice(0, 80)
+  if (!name) throw new Error('请输入词库名称')
+  const archiveId = safeArchiveId(`manual-${name}`)
+  const archiveDir = safeChild(vocabularyRoot, archiveId)
+  fs.mkdirSync(archiveDir, { recursive: true })
+  const archive = {
+    id: archiveId,
+    name,
+    sourceFilename: '',
+    importedAt: Date.now(),
+    decks: [{ id: 0, name: '手动词库' }],
+    models: [],
+    mappings: {},
+    words: [],
+  }
+  atomicWriteJson(path.join(archiveDir, 'archive.json'), archive)
+  atomicWriteJson(path.join(archiveDir, 'progress.json'), {
+    archiveId,
+    updatedAt: Date.now(),
+    words: {},
+    sessions: {},
+    settings: {
+      dailyNewWordLimit: 20,
+      correctIntervalsDays: [1, 3, 7, 14, 30],
+      wrongRetryMinutes: 10,
+    },
+  })
+  return archive
+}
+
+function saveArchive(vocabularyRoot, archiveId, archive) {
+  const safeId = path.basename(String(archiveId || ''))
+  if (!safeId || safeId !== String(archiveId || '') || archive?.id !== safeId) {
+    throw new Error('无效的词库标识')
+  }
+  const archiveDir = safeChild(vocabularyRoot, safeId)
+  if (!fs.existsSync(path.join(archiveDir, 'archive.json'))) throw new Error('词库不存在')
+  atomicWriteJson(path.join(archiveDir, 'archive.json'), archive)
+}
+
 function deleteArchive(vocabularyRoot, archiveId) {
   const safeId = path.basename(String(archiveId || ''))
   if (!safeId || safeId !== String(archiveId || '')) throw new Error('无效的词库标识')
@@ -458,6 +499,8 @@ module.exports = {
   archiveApkg,
   listArchives,
   loadArchive,
+  createArchive,
+  saveArchive,
   deleteArchive,
   loadProgress,
   saveProgress,

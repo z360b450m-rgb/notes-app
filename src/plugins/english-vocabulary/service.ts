@@ -9,6 +9,7 @@ import type {
 } from './types'
 import {
   archiveBrowserApkg,
+  createBrowserArchive,
   deleteBrowserArchive,
   getBrowserAudioUrl,
   inspectBrowserApkg,
@@ -16,6 +17,7 @@ import {
   loadBrowserArchive,
   loadBrowserProgress,
   saveBrowserProgress,
+  saveBrowserArchive,
 } from './browserStore'
 
 export interface VocabularyArchiveSummary extends Omit<VocabularyArchive, 'words'> {
@@ -80,6 +82,23 @@ export const vocabularyService = {
     return window.electronAPI?.loadVocabularyArchive
       ? window.electronAPI.loadVocabularyArchive(notebookId, archiveId)
       : loadBrowserArchive(notebookId, archiveId)
+  },
+
+  async createArchive(notebookId: string, name: string): Promise<VocabularyArchive> {
+    return window.electronAPI?.createVocabularyArchive
+      ? window.electronAPI.createVocabularyArchive(notebookId, name)
+      : createBrowserArchive(notebookId, name)
+  },
+
+  async saveArchive(
+    notebookId: string,
+    archiveId: string,
+    archive: VocabularyArchive,
+  ): Promise<void> {
+    const data = toIpcData(archive)
+    if (window.electronAPI?.saveVocabularyArchive)
+      return window.electronAPI.saveVocabularyArchive(notebookId, archiveId, data)
+    await saveBrowserArchive(notebookId, data)
   },
 
   async delete(notebookId: string, archiveId: string): Promise<void> {

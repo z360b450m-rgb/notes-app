@@ -94,6 +94,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listVocabularyArchives: (notebookId) => ipcRenderer.invoke('vocabulary:listArchives', notebookId),
   loadVocabularyArchive: (notebookId, archiveId) =>
     ipcRenderer.invoke('vocabulary:loadArchive', notebookId, archiveId),
+  createVocabularyArchive: (notebookId, name) =>
+    ipcRenderer.invoke('vocabulary:createArchive', notebookId, name),
+  saveVocabularyArchive: (notebookId, archiveId, archive) =>
+    ipcRenderer.invoke('vocabulary:saveArchive', notebookId, archiveId, archive),
   deleteVocabularyArchive: (notebookId, archiveId) =>
     ipcRenderer.invoke('vocabulary:deleteArchive', notebookId, archiveId),
   loadVocabularyProgress: (notebookId, archiveId) =>
