@@ -35,10 +35,10 @@ export function useExport(onToast: (msg: string) => void) {
   .subject { font-size: 16px; font-weight: 700; margin: 20px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #e5e7eb; }
   .card { margin-bottom: 20px; padding: 14px 16px; border: 1px solid #e5e7eb; border-radius: 10px; page-break-inside: avoid; }
   .card-title { font-size: 11px; color: #999; margin-bottom: 6px; }
-  .question { font-size: 14px; line-height: 1.6; margin-bottom: 10px; }
+  .question { font-size: 14px; line-height: 1.6; margin-bottom: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .answer-label { font-size: 11px; font-weight: 600; margin-bottom: 4px; }
-  .wrong { color: #ef4444; font-size: 13px; line-height: 1.5; margin-bottom: 6px; }
-  .correct { color: #22c55e; font-size: 13px; line-height: 1.5; }
+  .wrong { color: #ef4444; font-size: 13px; line-height: 1.5; margin-bottom: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .correct { color: #22c55e; font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   hr { border: none; border-top: 1px dashed #e5e7eb; margin: 8px 0; }
 
   @media print {

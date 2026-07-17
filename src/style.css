@@ -127,6 +127,12 @@
 .answer-details {
   overflow-wrap: anywhere;
 }
+
+/* Preserve the layout of text entered in textareas and plain-text editors. */
+.preserve-input-format {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .answer-details img,
 .answer-details video,
 .answer-details iframe {

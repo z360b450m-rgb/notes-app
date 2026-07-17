@@ -347,7 +347,7 @@ function ratingColor(q: number | string): string {
         <div class="flex-1 overflow-y-auto">
           <div ref="questionContentRef" :style="{ position: 'relative', minHeight: '100%' }">
             <div
-              class="px-3.5 py-3 text-base leading-relaxed md-content"
+              class="preserve-input-format px-3.5 py-3 text-base leading-relaxed md-content"
               v-html="sanitizedQuestion"
             />
           </div>
@@ -387,7 +387,7 @@ function ratingColor(q: number | string): string {
         <div v-if="!showCorrect" class="flex-1 overflow-y-auto">
           <div ref="wrongContentRef" :style="{ position: 'relative', minHeight: '100%' }">
             <div
-              class="px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
+              class="preserve-input-format px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
               v-html="sanitizedWrongAnswer"
             />
           </div>
@@ -421,7 +421,7 @@ function ratingColor(q: number | string): string {
         <div v-if="showCorrect" class="flex-1 overflow-y-auto">
           <div ref="correctContentRef" :style="{ position: 'relative', minHeight: '100%' }">
             <div
-              class="px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
+              class="preserve-input-format px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
               v-html="sanitizedCorrectAnswer"
             />
           </div>

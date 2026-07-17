@@ -1124,7 +1124,7 @@ onUnmounted(() => {
                 v-html="cleanHtml(word.phonetic)"
               />
             </div>
-            <div class="min-w-0 break-words leading-6" v-html="cleanHtml(word.meaning)" />
+            <div class="preserve-input-format min-w-0 break-words leading-6" v-html="cleanHtml(word.meaning)" />
             <span class="text-xs text-[#888]">{{ wordStatus(word.id) }}</span>
             <div class="flex items-start gap-2 text-xs">
               <button class="text-[#788c5d] hover:underline" @click="openEditWord(word)">编辑</button>
@@ -1220,7 +1220,7 @@ onUnmounted(() => {
               class="flex items-center gap-4"
             >
               <h2
-                class="min-w-0 flex-1 break-words text-4xl font-bold"
+                class="preserve-input-format min-w-0 flex-1 break-words text-4xl font-bold"
                 v-html="cleanHtml(currentWord.word)"
               />
               <button
@@ -1244,7 +1244,7 @@ onUnmounted(() => {
             </div>
             <div
               v-else
-              class="break-words text-2xl font-semibold"
+              class="preserve-input-format break-words text-2xl font-semibold"
               v-html="cleanHtml(currentWord.meaning)"
             />
             <div
@@ -1267,23 +1267,23 @@ onUnmounted(() => {
                 <div class="space-y-5">
                   <div>
                     <h3 class="mb-2 text-xs font-bold text-[#888]">中文释义</h3>
-                    <div class="leading-7" v-html="cleanHtml(currentWord.meaning)" />
+                    <div class="preserve-input-format leading-7" v-html="cleanHtml(currentWord.meaning)" />
                   </div>
                   <div v-if="currentWord.details">
                     <h3 class="mb-2 text-xs font-bold text-[#888]">答案后详解</h3>
-                    <div class="answer-details text-sm leading-7" v-html="cleanHtml(currentWord.details)" />
+                    <div class="answer-details preserve-input-format text-sm leading-7" v-html="cleanHtml(currentWord.details)" />
                   </div>
                   <div v-if="currentWord.exampleEn">
                     <h3 class="mb-2 text-xs font-bold text-[#888]">英语例句</h3>
-                    <div class="leading-7" v-html="cleanHtml(currentWord.exampleEn)" />
+                    <div class="preserve-input-format leading-7" v-html="cleanHtml(currentWord.exampleEn)" />
                   </div>
                   <div v-if="currentWord.exampleZh">
                     <h3 class="mb-2 text-xs font-bold text-[#888]">例句翻译</h3>
-                    <div class="leading-7" v-html="cleanHtml(currentWord.exampleZh)" />
+                    <div class="preserve-input-format leading-7" v-html="cleanHtml(currentWord.exampleZh)" />
                   </div>
                   <div v-if="currentWord.note">
                     <h3 class="mb-2 text-xs font-bold text-[#888]">注释</h3>
-                    <div class="leading-7" v-html="cleanHtml(currentWord.note)" />
+                    <div class="preserve-input-format leading-7" v-html="cleanHtml(currentWord.note)" />
                   </div>
                 </div>
               </div>
@@ -1315,7 +1315,7 @@ onUnmounted(() => {
                 <div>
                   <span class="text-xs opacity-70">正确答案</span>
                   <div
-                    class="mt-1 break-words font-medium"
+                    class="preserve-input-format mt-1 break-words font-medium"
                     v-html="
                       cleanHtml(reviewMode === 'zh-to-en' ? currentWord.word : currentWord.meaning)
                     "
@@ -1323,7 +1323,7 @@ onUnmounted(() => {
                 </div>
                 <div class="border-t border-current/10 pt-4 text-[#141413] dark:text-[#faf9f5]">
                   <div class="flex items-center gap-3">
-                    <strong class="break-words text-xl" v-html="cleanHtml(currentWord.word)" />
+                    <strong class="preserve-input-format break-words text-xl" v-html="cleanHtml(currentWord.word)" />
                     <span
                       v-if="currentWord.phonetic"
                       class="text-sm text-[#888]"
@@ -1348,28 +1348,28 @@ onUnmounted(() => {
                     </button>
                   </div>
                   <div class="mt-4 space-y-4">
-                    <div class="break-words" v-html="cleanHtml(currentWord.meaning)" />
+                    <div class="preserve-input-format break-words" v-html="cleanHtml(currentWord.meaning)" />
                     <div v-if="currentWord.details">
                       <h3 class="mb-1 text-xs font-bold text-[#888]">答案后详解</h3>
-                      <div class="answer-details break-words text-sm leading-7" v-html="cleanHtml(currentWord.details)" />
+                      <div class="answer-details preserve-input-format break-words text-sm leading-7" v-html="cleanHtml(currentWord.details)" />
                     </div>
                     <div v-if="currentWord.exampleEn">
                       <h3 class="mb-1 text-xs font-bold text-[#888]">英语例句</h3>
                       <div
-                        class="break-words leading-7"
+                        class="preserve-input-format break-words leading-7"
                         v-html="cleanHtml(currentWord.exampleEn)"
                       />
                     </div>
                     <div v-if="currentWord.exampleZh">
                       <h3 class="mb-1 text-xs font-bold text-[#888]">例句翻译</h3>
                       <div
-                        class="break-words leading-7"
+                        class="preserve-input-format break-words leading-7"
                         v-html="cleanHtml(currentWord.exampleZh)"
                       />
                     </div>
                     <div v-if="currentWord.note">
                       <h3 class="mb-1 text-xs font-bold text-[#888]">注释</h3>
-                      <div class="break-words leading-7" v-html="cleanHtml(currentWord.note)" />
+                      <div class="preserve-input-format break-words leading-7" v-html="cleanHtml(currentWord.note)" />
                     </div>
                   </div>
                 </div>
