@@ -73,6 +73,17 @@ export interface ReviewLog {
   entryId: string
   timestamp: number
   quality: number | string
+  // 选择题作答结果；旧记录没有这些字段时仍可正常使用。
+  selectedChoice?: string
+  correctChoice?: string
+  isCorrect?: boolean
+  // 复习场次信息；用于在统计面板按“到期 / 自由复习”展示已完成的复习历史。
+  sessionId?: string
+  reviewScope?: 'due' | 'all'
+  sessionSize?: number
+  sessionCompleted?: boolean
+  elapsedMs?: number
+  reviewNote?: string
 }
 
 /**

@@ -1,4 +1,5 @@
 import type { NoteEntry } from '@/types'
+import { parseMultipleChoice } from './multipleChoice'
 
 export function parsePastedText(rawText: string, notebookId: string): Partial<NoteEntry>[] {
   const entries: Partial<NoteEntry>[] = []
@@ -36,4 +37,10 @@ export function parsePastedText(rawText: string, notebookId: string): Partial<No
   }
 
   return entries
+}
+
+export function countMultipleChoiceEntries(entries: Partial<NoteEntry>[]): number {
+  return entries.filter((entry) =>
+    parseMultipleChoice(entry.question || '', entry.correctAnswer || ''),
+  ).length
 }

@@ -7,7 +7,7 @@ import { migrateFromIndexedDB } from './services/db'
 import { useFilter } from './composables/useFilter'
 import type { SortKey, SortDir } from './composables/useFilter'
 import { useMetaStore } from './composables/useMetaStore'
-import { useReview } from './composables/useReview'
+import { useReview, type ReviewOptions } from './composables/useReview'
 import { useReviewSettings } from './composables/useReviewSettings'
 import { useNotebooks } from './composables/useNotebooks'
 import type { NoteEntry } from '@/types'
@@ -18,7 +18,7 @@ import { useExport } from './composables/useExport'
 import { useStats } from './composables/useStats'
 import { useKeyboard } from './composables/useKeyboard'
 import { useDarkMode } from './composables/useDarkMode'
-import { parsePastedText } from './utils/parsePastedText'
+import { countMultipleChoiceEntries, parsePastedText } from './utils/parsePastedText'
 import { parsePdfFile } from './utils/parsePdf'
 import type { PdfParseProgress } from './utils/parsePdf'
 import { db, setCurrentNotebookId } from './services/db'
@@ -206,6 +206,30 @@ const pendingEntryId = ref<string | null>(null)
 const pendingAction = ref<'select' | 'create' | 'review' | null>(null)
 const pendingSubject = ref<string>('')
 const pendingForceReview = ref(false)
+const showReviewSetup = ref(false)
+const reviewScope = ref<'due' | 'all'>('due')
+const reviewTags = ref<string[]>([])
+const reviewSubjects = ref<string[]>([])
+const reviewRandom = ref(true)
+const reviewLimit = ref<number | null>(null)
+
+const reviewCandidateCount = computed(() => {
+  let pool =
+    reviewScope.value === 'all'
+      ? notebookEntries.value
+      : notebookEntries.value.filter(
+          (entry) => !entry.nextReviewDate || entry.nextReviewDate <= Date.now(),
+        )
+  if (reviewTags.value.length) {
+    pool = pool.filter((entry) => reviewTags.value.some((tag) => entry.tags.includes(tag)))
+  }
+  if (reviewSubjects.value.length) {
+    pool = pool.filter((entry) => reviewSubjects.value.includes(entry.subject))
+  }
+  return reviewLimit.value && reviewLimit.value > 0
+    ? Math.min(pool.length, reviewLimit.value)
+    : pool.length
+})
 
 async function handleEnterNotebook(id: string) {
   selectNotebook(id)
@@ -428,9 +452,19 @@ function handleConfirmDelete() {
 const showBatchImport = ref(false)
 const batchImportText = ref('')
 const batchImportLoading = ref(false)
+const batchImportSubject = ref('未分类')
+const batchImportSource = ref('批量导入')
+const batchImportTags = ref('')
+const batchImportPreview = computed(() =>
+  parsePastedText(batchImportText.value, activeNotebookId.value || '__preview__'),
+)
+const batchImportChoiceCount = computed(() => countMultipleChoiceEntries(batchImportPreview.value))
 
 function handleOpenBatchImport() {
   batchImportText.value = ''
+  batchImportSubject.value = '未分类'
+  batchImportSource.value = '批量导入'
+  batchImportTags.value = ''
   showBatchImport.value = true
 }
 
@@ -440,29 +474,31 @@ async function handleConfirmBatchImport() {
   batchImportLoading.value = true
   try {
     const parsed = parsePastedText(batchImportText.value, activeNotebookId.value)
+    if (parsed.length === 0) {
+      showToast('没有识别到题目，请确认每题以 1.、2)、（3）等序号开头')
+      return
+    }
+    const tags = batchImportTags.value
+      .split(/[,，]/)
+      .map((tag) => tag.trim())
+      .filter(Boolean)
     const now = Date.now()
-    for (const item of parsed) {
+    for (const [index, item] of parsed.entries()) {
       const entry = {
-        id:
-          'cuoti_' +
-          now +
-          '_' +
-          Math.random().toString(36).slice(2, 7) +
-          '_' +
-          parsed.indexOf(item),
+        id: 'cuoti_' + now + '_' + Math.random().toString(36).slice(2, 7) + '_' + index,
         notebookId: activeNotebookId.value,
         title: (item.question || '').slice(0, 40),
         question: item.question || '',
         wrongAnswer: item.wrongAnswer || '',
         correctAnswer: item.correctAnswer || '',
-        subject: item.subject || '未分类',
-        source: item.source || '批量导入',
-        tags: item.tags || [],
+        subject: batchImportSubject.value.trim() || item.subject || '未分类',
+        source: batchImportSource.value.trim() || item.source || '批量导入',
+        tags: Array.from(new Set([...(item.tags || []), ...tags])),
         masteryLevel: 0,
         consecutivePasses: 0,
         nextReviewDate: 0,
-        createdAt: now + parsed.indexOf(item),
-        updatedAt: now + parsed.indexOf(item),
+        createdAt: now + index,
+        updatedAt: now + index,
       }
       await db.put(JSON.parse(JSON.stringify(entry)))
     }
@@ -726,14 +762,46 @@ function handleSelectEntry(id: string) {
 }
 
 function handleStartReview(force = false) {
-  if (!force && dueCount.value === 0) {
-    showToast('今日复习已完成')
-    return
-  }
   pendingForceReview.value = force
   checkDirtyThen(() => {
-    startReview(force)
+    openReviewSetup(force)
   }, 'review')
+}
+
+function openReviewSetup(force = false) {
+  reviewScope.value = force ? 'all' : 'due'
+  reviewTags.value = []
+  reviewSubjects.value = []
+  reviewRandom.value = true
+  reviewLimit.value = null
+  showReviewSetup.value = true
+}
+
+function toggleReviewTag(tag: string) {
+  reviewTags.value = reviewTags.value.includes(tag)
+    ? reviewTags.value.filter((item) => item !== tag)
+    : [...reviewTags.value, tag]
+}
+
+function toggleReviewSubject(subject: string) {
+  reviewSubjects.value = reviewSubjects.value.includes(subject)
+    ? reviewSubjects.value.filter((item) => item !== subject)
+    : [...reviewSubjects.value, subject]
+}
+
+function beginConfiguredReview() {
+  const options: ReviewOptions = {
+    scope: reviewScope.value,
+    tags: reviewTags.value,
+    subjects: reviewSubjects.value,
+    random: reviewRandom.value,
+    limit: reviewLimit.value || undefined,
+  }
+  if (!startReview(options)) {
+    showToast('当前筛选条件下没有可复习的题目')
+    return
+  }
+  showReviewSetup.value = false
 }
 
 function handleMountCanvas(el: HTMLElement, entryId: string, field: string) {
@@ -798,7 +866,7 @@ function handleBlurSave() {
 }
 
 function doStartReview() {
-  startReview(pendingForceReview.value)
+  openReviewSetup(pendingForceReview.value)
 }
 
 function handleExitReview() {
@@ -942,7 +1010,9 @@ watch(activeId, (_newId) => {
       @exit-review="handleExitReview"
       @toggle-mode="mode === 'review' ? handleExitReview() : handleStartReview()"
       @reveal="mode === 'review' ? revealAnswer() : (answersHidden = !answersHidden)"
-      @rate-card="(r: number | string, note: string) => rateCard(r, note)"
+      @rate-card="
+        (r: number | string, note: string, outcome) => rateCard(r, note, outcome)
+      "
       @dismiss-summary="dismissSummary"
       @toggle-drawing="toggleDrawing"
       @set-tool="setTool"
@@ -999,6 +1069,129 @@ watch(activeId, (_newId) => {
       @change-data-dir="handleChangeDataDir"
     />
   </Transition>
+  <Transition name="stats">
+    <div
+      v-if="showReviewSetup"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+      @click.self="showReviewSetup = false"
+    >
+      <div
+        class="bg-white dark:bg-[#1e1e1c] rounded-2xl shadow-xl border border-gray-200 dark:border-[#2e2e2c] w-full max-w-xl max-h-[85vh] overflow-y-auto mx-4 p-6"
+      >
+        <h2 class="text-[16px] font-semibold text-gray-800 dark:text-brand-light-gray">开始复习</h2>
+        <p class="text-[12px] text-gray-400 dark:text-brand-mid mt-1 mb-5">
+          按本轮目标选择范围；答对会记录掌握度，但不会删除原题。
+        </p>
+
+        <div class="grid grid-cols-2 gap-2 mb-5">
+          <button
+            class="rounded-xl border px-3 py-3 text-left transition-colors"
+            :class="
+              reviewScope === 'due'
+                ? 'border-accent bg-accent/5 text-accent'
+                : 'border-gray-200 dark:border-[#383835] text-gray-600 dark:text-brand-light-gray'
+            "
+            @click="reviewScope = 'due'"
+          >
+            <span class="block text-sm font-semibold">到期复习</span>
+            <span class="text-[11px] opacity-70">仅练习当前到期题目</span>
+          </button>
+          <button
+            class="rounded-xl border px-3 py-3 text-left transition-colors"
+            :class="
+              reviewScope === 'all'
+                ? 'border-accent bg-accent/5 text-accent'
+                : 'border-gray-200 dark:border-[#383835] text-gray-600 dark:text-brand-light-gray'
+            "
+            @click="reviewScope = 'all'"
+          >
+            <span class="block text-sm font-semibold">自由练习</span>
+            <span class="text-[11px] opacity-70">从全部题目中抽题</span>
+          </button>
+        </div>
+
+        <div v-if="allSubjects.length" class="mb-4">
+          <p class="text-xs font-medium text-gray-600 dark:text-brand-light-gray mb-2">
+            板块（可多选）
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="subject in allSubjects"
+              :key="subject"
+              class="px-2.5 py-1 rounded-full text-xs border transition-colors"
+              :class="
+                reviewSubjects.includes(subject)
+                  ? 'border-accent bg-accent text-white'
+                  : 'border-gray-200 dark:border-[#383835] text-gray-500 dark:text-brand-mid'
+              "
+              @click="toggleReviewSubject(subject)"
+            >
+              {{ subject }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="allTags.length" class="mb-5">
+          <p class="text-xs font-medium text-gray-600 dark:text-brand-light-gray mb-2">
+            标签（可多选，命中任一标签即可）
+          </p>
+          <div class="flex flex-wrap gap-2 max-h-28 overflow-y-auto pr-1">
+            <button
+              v-for="tag in allTags"
+              :key="tag"
+              class="px-2.5 py-1 rounded-full text-xs border transition-colors"
+              :class="
+                reviewTags.includes(tag)
+                  ? 'border-accent bg-accent text-white'
+                  : 'border-gray-200 dark:border-[#383835] text-gray-500 dark:text-brand-mid'
+              "
+              @click="toggleReviewTag(tag)"
+            >
+              # {{ tag }}
+            </button>
+          </div>
+        </div>
+
+        <div
+          class="flex flex-wrap items-center gap-4 border-t border-gray-100 dark:border-[#2e2e2c] pt-4"
+        >
+          <label
+            class="flex items-center gap-2 text-xs text-gray-600 dark:text-brand-light-gray cursor-pointer"
+          >
+            <input v-model="reviewRandom" type="checkbox" class="accent-accent" /> 随机顺序
+          </label>
+          <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-brand-light-gray">
+            本轮题数
+            <input
+              v-model.number="reviewLimit"
+              type="number"
+              min="1"
+              placeholder="全部"
+              class="w-20 rounded-md border border-gray-200 dark:border-[#383835] bg-transparent px-2 py-1 text-xs outline-none focus:border-accent"
+            />
+          </label>
+          <span class="ml-auto text-xs font-medium text-accent"
+            >将复习 {{ reviewCandidateCount }} 题</span
+          >
+        </div>
+        <div class="flex justify-end gap-2 mt-5">
+          <button
+            class="px-4 py-2 text-xs rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-[#2a2a28]"
+            @click="showReviewSetup = false"
+          >
+            取消
+          </button>
+          <button
+            class="px-4 py-2 text-xs font-medium rounded-lg bg-accent text-white disabled:opacity-50"
+            :disabled="reviewCandidateCount === 0"
+            @click="beginConfiguredReview"
+          >
+            开始练习
+          </button>
+        </div>
+      </div>
+    </div>
+  </Transition>
   <!-- Batch text import modal -->
   <Transition name="stats">
     <div
@@ -1013,8 +1206,8 @@ watch(activeId, (_newId) => {
           批量导入错题
         </h2>
         <p class="text-[12px] text-gray-400 dark:text-brand-mid mb-4">
-          粘贴带序号的题目文本，支持 "答案：" 或 "解析：" 分割。示例格式：<br />
-          <code class="text-[11px]">1. 题目内容... 答案：正确答案</code>
+          粘贴带序号的题目；“答案：B”会自动识别为可点选的选择题。<br />
+          <code class="text-[11px]">1. 题干 A. 选项一 B. 选项二 答案：B</code>
         </p>
         <textarea
           v-model="batchImportText"
@@ -1022,6 +1215,30 @@ watch(activeId, (_newId) => {
           placeholder="在此粘贴题目文本..."
           :disabled="batchImportLoading"
         />
+        <div class="mt-3 grid grid-cols-2 gap-2">
+          <input
+            v-model="batchImportSubject"
+            class="px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-[#2e2e2c] bg-gray-50 dark:bg-[#141412] outline-none focus:border-accent/40"
+            placeholder="统一板块，例如：英语语法"
+            :disabled="batchImportLoading"
+          />
+          <input
+            v-model="batchImportSource"
+            class="px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-[#2e2e2c] bg-gray-50 dark:bg-[#141412] outline-none focus:border-accent/40"
+            placeholder="来源"
+            :disabled="batchImportLoading"
+          />
+          <input
+            v-model="batchImportTags"
+            class="col-span-2 px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-[#2e2e2c] bg-gray-50 dark:bg-[#141412] outline-none focus:border-accent/40"
+            placeholder="统一标签，多个标签用逗号分隔"
+            :disabled="batchImportLoading"
+          />
+        </div>
+        <div class="mt-3 px-3 py-2 rounded-lg bg-accent/5 text-[12px] text-accent">
+          已识别 {{ batchImportPreview.length }} 题，其中
+          {{ batchImportChoiceCount }} 题为可点选的选择题。
+        </div>
         <div class="flex justify-end gap-2 mt-4">
           <button
             class="px-4 py-1.5 text-[12px] rounded-lg text-gray-500 dark:text-brand-mid hover:bg-gray-100 dark:hover:bg-[#2a2a28] transition-colors"
@@ -1032,7 +1249,7 @@ watch(activeId, (_newId) => {
           </button>
           <button
             class="px-4 py-1.5 text-[12px] font-medium rounded-lg bg-accent text-white hover:opacity-90 transition-opacity disabled:opacity-50"
-            :disabled="!batchImportText.trim() || batchImportLoading"
+            :disabled="batchImportPreview.length === 0 || batchImportLoading"
             @click="handleConfirmBatchImport"
           >
             {{ batchImportLoading ? '导入中...' : '一键导入' }}

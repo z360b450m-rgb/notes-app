@@ -3,9 +3,10 @@
 // 禁止在此实现 SRS 算法、间隔计算、直接操作复习日志存储。
 import { ref, watch, nextTick, onUnmounted, computed } from 'vue'
 import type { NoteEntry } from '@/types'
-import type { SessionRecord } from '@/composables/useReview'
-import { getMasteryColor, getMasteryLabel } from '@/composables/useStats'
+import type { ReviewOutcome, SessionRecord } from '@/composables/useReview'
+import { getMasteryLabel } from '@/composables/useStats'
 import { sanitizeHtml, formatMcOptions } from '@/utils/sanitize'
+import { parseMultipleChoice } from '@/utils/multipleChoice'
 
 const props = defineProps<{
   entry: NoteEntry | undefined
@@ -20,11 +21,12 @@ const props = defineProps<{
   sessionRecords: SessionRecord[]
   totalSessionMs: number
   reviewQueue: NoteEntry[]
+  entries: NoteEntry[]
 }>()
 
 const emit = defineEmits<{
   reveal: []
-  rate: [rating: number | string, note: string]
+  rate: [rating: number | string, note: string, outcome?: ReviewOutcome]
   startReview: [force: boolean]
   exitReview: []
   dismissSummary: []
@@ -34,6 +36,14 @@ const emit = defineEmits<{
 const showCorrect = ref(false)
 const note = ref('')
 const rated = ref(false)
+const selectedChoice = ref<string | null>(null)
+const summaryEntryId = ref<string | null>(null)
+const multipleChoice = computed(() =>
+  parseMultipleChoice(props.entry?.question || '', props.entry?.correctAnswer || ''),
+)
+const sanitizedChoiceStem = computed(() =>
+  sanitizeHtml(formatMcOptions(multipleChoice.value?.stem || '')),
+)
 
 const sanitizedQuestion = computed(
   () =>
@@ -111,6 +121,7 @@ watch(
   () => {
     showCorrect.value = false
     note.value = ''
+    selectedChoice.value = null
     nextTick(() => {
       if (questionContentRef.value && props.entry?.id) {
         emit('mount-canvas', questionContentRef.value, props.entry.id, 'question')
@@ -126,6 +137,41 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => props.sessionDone,
+  (done) => {
+    if (done) {
+      summaryEntryId.value = null
+    }
+  },
+)
+
+function selectChoice(key: string) {
+  if (selectedChoice.value) return
+  selectedChoice.value = key
+  reveal()
+}
+
+function choiceClass(key: string): string {
+  const selected = selectedChoice.value
+  const correct = multipleChoice.value?.correctOption
+  if (!selected) {
+    return 'border-gray-200 dark:border-[#3a3a37] bg-white dark:bg-[#1e1e1c] hover:border-accent/50 hover:bg-accent/5'
+  }
+  if (!correct) {
+    return key === selected
+      ? 'border-accent bg-accent/5 text-accent dark:border-accent/70 dark:bg-accent/10'
+      : 'border-gray-100 dark:border-[#2e2e2c] bg-gray-50/70 dark:bg-[#1a1a18] opacity-60'
+  }
+  if (key === correct) {
+    return 'border-emerald-400 bg-emerald-50 dark:border-emerald-500/60 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-200'
+  }
+  if (key === selected) {
+    return 'border-red-400 bg-red-50 dark:border-red-500/60 dark:bg-red-500/15 text-red-800 dark:text-red-200'
+  }
+  return 'border-gray-100 dark:border-[#2e2e2c] bg-gray-50/70 dark:bg-[#1a1a18] opacity-60'
+}
+
 function reveal() {
   showCorrect.value = true
   rated.value = false
@@ -138,7 +184,16 @@ function showWrong() {
 
 function rate(r: string, n: string) {
   rated.value = true
-  emit('rate', r, n)
+  const correctChoice = multipleChoice.value?.correctOption
+  const outcome: ReviewOutcome | undefined =
+    selectedChoice.value && correctChoice
+      ? {
+          selectedChoice: selectedChoice.value,
+          correctChoice,
+          isCorrect: selectedChoice.value === correctChoice,
+        }
+      : undefined
+  emit('rate', r, n, outcome)
 }
 
 const customRatings = [
@@ -188,12 +243,24 @@ function formatTotalTime(ms: number): string {
 }
 
 function entryById(id: string): NoteEntry | undefined {
-  return props.reviewQueue.find((e) => e.id === id)
+  return props.entries.find((e) => e.id === id) ?? props.reviewQueue.find((e) => e.id === id)
 }
 
-function masteryBucket(entry: NoteEntry | undefined) {
-  if (!entry) return null
-  return { label: getMasteryLabel(entry), color: getMasteryColor(entry) }
+const summaryEntry = computed(() =>
+  summaryEntryId.value ? entryById(summaryEntryId.value) : undefined,
+)
+
+function openSummaryEntry(entryId: string) {
+  summaryEntryId.value = entryId
+}
+
+function closeSummaryEntry() {
+  summaryEntryId.value = null
+}
+
+function summaryEntryHtml(entry: NoteEntry | undefined, field: 'question' | 'wrongAnswer' | 'correctAnswer') {
+  if (!entry) return "<span class='text-gray-300'>题目已删除</span>"
+  return sanitizedFallback(entry[field], '(无内容)')
 }
 
 const qualityLabels = ['遗忘', '错误', '勉强', '困难', '犹豫', '完美']
@@ -252,46 +319,67 @@ function ratingColor(q: number | string): string {
           </div>
         </div>
 
-        <div class="w-full max-w-lg flex flex-col gap-2 pb-10">
-          <div
-            v-for="(rec, i) in sessionRecords"
-            :key="rec.entryId"
-            class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-[#141413] border border-gray-100 dark:border-[#2e2e2c] rounded-xl"
-          >
-            <span class="text-[11px] text-gray-300 dark:text-[#4a4a48] w-5 tabular-nums">{{
-              i + 1
-            }}</span>
-            <span
-              class="w-2.5 h-2.5 rounded-full flex-shrink-0"
-              :style="{ backgroundColor: ratingColor(rec.quality) }"
-            />
-            <div class="flex-1 min-w-0">
-              <div
-                class="text-[13px] text-gray-800 dark:text-brand-light-gray truncate"
-                v-html="sanitizedFallback(entryById(rec.entryId)?.question, '(无题目)')"
-              />
-              <div class="flex items-center gap-2 mt-0.5">
-                <span class="text-[10px] text-gray-400 dark:text-brand-mid">{{
-                  entryById(rec.entryId)?.subject || ''
-                }}</span>
-                <span
-                  v-if="masteryBucket(entryById(rec.entryId))"
-                  class="text-[10px] px-1.5 py-px rounded-full text-white"
-                  :style="{ backgroundColor: masteryBucket(entryById(rec.entryId))!.color }"
-                  >{{ masteryBucket(entryById(rec.entryId))!.label }}</span
-                >
-              </div>
+        <div class="w-full max-w-lg pb-10">
+          <div v-if="summaryEntry" class="flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <button
+                class="text-xs text-accent hover:underline"
+                @click="closeSummaryEntry"
+              >
+                ← 返回列表
+              </button>
+              <span class="text-[11px] text-gray-400 dark:text-brand-mid">{{ summaryEntry.subject }}</span>
             </div>
-            <span
-              class="text-[11px] text-gray-400 dark:text-brand-mid tabular-nums flex-shrink-0"
-              >{{ formatTime(rec.elapsedMs) }}</span
-            >
-            <span
-              class="text-[11px] font-medium flex-shrink-0 w-16 text-right"
-              :style="{ color: ratingColor(rec.quality) }"
-              >{{ ratingLabel(rec.quality) }}</span
-            >
+            <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-[#2e2e2c] dark:bg-[#141413]">
+              <div class="mb-2 text-xs font-semibold text-accent">题目</div>
+              <div
+                class="preserve-input-format text-sm leading-relaxed text-gray-800 dark:text-brand-light-gray"
+                v-html="summaryEntryHtml(summaryEntry, 'question')"
+              />
+            </div>
+            <div class="rounded-xl border border-red-100 bg-red-50/60 p-4 dark:border-red-500/20 dark:bg-red-500/10">
+              <div class="mb-2 text-xs font-semibold text-red-600 dark:text-red-400">错误答案 / 你的记录</div>
+              <div
+                class="preserve-input-format text-sm leading-relaxed text-gray-800 dark:text-brand-light-gray"
+                v-html="summaryEntryHtml(summaryEntry, 'wrongAnswer')"
+              />
+            </div>
+            <div class="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+              <div class="mb-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">正确答案 / 解析</div>
+              <div
+                class="preserve-input-format text-sm leading-relaxed text-gray-800 dark:text-brand-light-gray"
+                v-html="summaryEntryHtml(summaryEntry, 'correctAnswer')"
+              />
+            </div>
           </div>
+
+          <div v-else class="flex flex-col gap-2">
+            <button
+              v-for="(rec, i) in sessionRecords"
+              :key="rec.entryId"
+              class="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 text-left transition-colors hover:border-accent/40 hover:bg-accent/5 dark:border-[#2e2e2c] dark:bg-[#141413] dark:hover:bg-accent/10"
+              @click="openSummaryEntry(rec.entryId)"
+            >
+              <span class="w-5 text-[11px] tabular-nums text-gray-300 dark:text-[#4a4a48]">{{ i + 1 }}</span>
+              <span
+                class="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                :style="{ backgroundColor: ratingColor(rec.quality) }"
+              />
+              <div class="flex-1 min-w-0">
+                <div
+                  class="truncate text-[13px] text-gray-800 dark:text-brand-light-gray"
+                  v-html="sanitizedFallback(entryById(rec.entryId)?.question, '(无题目)')"
+                />
+                <div class="mt-0.5 flex items-center gap-2">
+                  <span class="text-[10px] text-gray-400 dark:text-brand-mid">{{ entryById(rec.entryId)?.subject || '' }}</span>
+                  <span v-if="rec.isCorrect === false" class="text-[10px] text-red-500">选 {{ rec.selectedChoice }}，正确 {{ rec.correctChoice }}</span>
+                </div>
+              </div>
+              <span class="text-[11px] tabular-nums text-gray-400 dark:text-brand-mid">{{ formatTime(rec.elapsedMs) }}</span>
+              <span class="w-16 flex-shrink-0 text-right text-[11px] font-medium" :style="{ color: ratingColor(rec.quality) }">{{ ratingLabel(rec.quality) }}</span>
+            </button>
+          </div>
+
         </div>
 
         <button
@@ -346,7 +434,51 @@ function ratingColor(q: number | string): string {
         </div>
         <div class="flex-1 overflow-y-auto">
           <div ref="questionContentRef" :style="{ position: 'relative', minHeight: '100%' }">
+            <div v-if="multipleChoice" class="px-3.5 py-3">
+              <div
+                class="preserve-input-format text-base leading-relaxed md-content"
+                v-html="sanitizedChoiceStem"
+              />
+              <div class="mt-4 grid gap-2">
+                <button
+                  v-for="option in multipleChoice.options"
+                  :key="option.key"
+                  type="button"
+                  class="w-full flex items-start gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-all duration-200 disabled:cursor-default"
+                  :class="choiceClass(option.key)"
+                  :disabled="!!selectedChoice"
+                  @click="selectChoice(option.key)"
+                >
+                  <span
+                    class="w-6 h-6 rounded-full border border-current flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    >{{ option.key }}</span
+                  >
+                  <span
+                    class="preserve-input-format md-content leading-relaxed"
+                    v-html="sanitizeHtml(formatMcOptions(option.content))"
+                  />
+                </button>
+              </div>
+              <p
+                v-if="selectedChoice"
+                class="mt-3 text-xs font-medium"
+                :class="
+                  selectedChoice === multipleChoice.correctOption
+                    ? 'text-emerald-600 dark:text-emerald-300'
+                    : 'text-red-600 dark:text-red-300'
+                "
+              >
+                {{
+                  !multipleChoice.correctOption
+                    ? `已选择 ${selectedChoice}，此题尚未设置正确答案，无法自动判定对错。`
+                    : selectedChoice === multipleChoice.correctOption
+                      ? '回答正确，请在下方记录掌握程度。'
+                      : `回答错误，正确选项是 ${multipleChoice.correctOption}。请查看解析后记录掌握程度。`
+                }}
+              </p>
+            </div>
             <div
+              v-else
               class="preserve-input-format px-3.5 py-3 text-base leading-relaxed md-content"
               v-html="sanitizedQuestion"
             />

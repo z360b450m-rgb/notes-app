@@ -5,7 +5,7 @@ import { ref } from 'vue'
 import type { NoteEntry } from '@/types'
 import type { SortKey, SortDir } from '@/composables/useFilter'
 import type { StatsState } from '@/composables/useStats'
-import type { SessionRecord } from '@/composables/useReview'
+import type { ReviewOutcome, SessionRecord } from '@/composables/useReview'
 import type { NotebookPluginManifest } from '@/plugins/types'
 import { PEN_COLORS } from '@/composables/useDrawing'
 import AppSidebar from './AppSidebar.vue'
@@ -113,7 +113,7 @@ const emit = defineEmits<{
   'exit-review': []
   'toggle-mode': []
   reveal: []
-  'rate-card': [r: number | string, note: string]
+  'rate-card': [r: number | string, note: string, outcome?: ReviewOutcome]
   'dismiss-summary': []
 
   // Drawing
@@ -335,8 +335,9 @@ function onWheel(e: WheelEvent) {
           :session-records="sessionRecords"
           :total-session-ms="totalSessionMs"
           :review-queue="reviewQueue"
+          :entries="entries"
           @reveal="emit('reveal')"
-          @rate="(r, note) => emit('rate-card', r, note)"
+          @rate="(r, note, outcome) => emit('rate-card', r, note, outcome)"
           @start-review="(force: boolean) => emit('start-review', force)"
           @exit-review="emit('exit-review')"
           @dismiss-summary="emit('dismiss-summary')"

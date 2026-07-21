@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // @AI-NOTE: 统计面板组件 —— 统计数据由 useStats Hook 计算。
 // 禁止在此直接计算统计指标或操作存储。
-import { computed } from 'vue'
-import type { StatsState } from '@/composables/useStats'
+import { computed, ref } from 'vue'
+import type { ReviewHistorySession, StatsState } from '@/composables/useStats'
+import ReviewHistoryDetailModal from './ReviewHistoryDetailModal.vue'
 
 const props = defineProps<{
   stats: StatsState
@@ -16,6 +17,37 @@ const hueStep = computed(() => {
   const n = props.stats.subjectBars.value.length || 1
   return 360 / n
 })
+
+const historyScope = ref<'due' | 'all'>('due')
+const selectedSession = ref<ReviewHistorySession | null>(null)
+const selectedSessionScope = ref<'due' | 'all'>('due')
+const activeHistory = computed(() =>
+  historyScope.value === 'due'
+    ? props.stats.dueReviewHistory.value
+    : props.stats.freeReviewHistory.value,
+)
+
+function openSession(session: ReviewHistorySession) {
+  selectedSession.value = session
+  selectedSessionScope.value = historyScope.value
+}
+
+function formatSessionTime(timestamp: number): string {
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(timestamp)
+}
+
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return minutes > 0 ? `${minutes} 分 ${seconds} 秒` : `${seconds} 秒`
+}
 </script>
 
 <template>
@@ -203,7 +235,80 @@ const hueStep = computed(() => {
             </div>
           </div>
         </div>
+
+        <!-- Completed review history -->
+        <div>
+          <h3
+            class="text-[12px] font-semibold text-gray-500 dark:text-brand-mid mb-3 uppercase tracking-[0.5px]"
+          >
+            复习历史
+          </h3>
+          <div class="mb-3 grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1 dark:bg-[#1e1e1c]">
+            <button
+              class="rounded-lg px-2 py-2 text-xs font-medium transition-colors"
+              :class="
+                historyScope === 'due'
+                  ? 'bg-white text-accent shadow-sm dark:bg-[#333330]'
+                  : 'text-gray-500 dark:text-brand-mid'
+              "
+              @click="historyScope = 'due'"
+            >
+              到期复习 ({{ stats.dueReviewHistory.value.length }})
+            </button>
+            <button
+              class="rounded-lg px-2 py-2 text-xs font-medium transition-colors"
+              :class="
+                historyScope === 'all'
+                  ? 'bg-white text-violet-600 shadow-sm dark:bg-[#333330] dark:text-violet-300'
+                  : 'text-gray-500 dark:text-brand-mid'
+              "
+              @click="historyScope = 'all'"
+            >
+              自由复习 ({{ stats.freeReviewHistory.value.length }})
+            </button>
+          </div>
+          <div
+            v-if="activeHistory.length === 0"
+            class="rounded-xl border border-dashed border-gray-200 dark:border-[#383835] px-3 py-4 text-center text-[12px] text-gray-400 dark:text-brand-mid"
+          >
+            暂无已完成的{{ historyScope === 'due' ? '到期复习' : '自由复习' }}
+          </div>
+          <div v-else class="space-y-2">
+            <button
+              v-for="session in activeHistory"
+              :key="session.id"
+              class="w-full rounded-xl border border-gray-100 bg-gray-50/70 text-left transition-colors hover:border-accent/40 hover:bg-accent/5 dark:border-[#2e2e2c] dark:bg-[#1e1e1c] dark:hover:bg-accent/10"
+              @click="openSession(session)"
+            >
+              <div class="px-3 py-3">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-[12px] font-medium text-gray-700 dark:text-brand-light-gray">{{
+                    formatSessionTime(session.completedAt)
+                  }}</span>
+                  <span
+                    class="text-[11px] font-medium"
+                    :class="
+                      historyScope === 'due'
+                        ? 'text-accent'
+                        : 'text-violet-600 dark:text-violet-300'
+                    "
+                    >完成 {{ session.reviewedCount }} / {{ session.totalCount }} 题</span
+                  >
+                </div>
+                <div class="mt-1 text-[10px] text-gray-400 dark:text-brand-mid">
+                  用时 {{ formatDuration(session.totalElapsedMs) }} · 点击查看全部题目
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
+    <ReviewHistoryDetailModal
+      v-if="selectedSession"
+      :session="selectedSession"
+      :scope="selectedSessionScope"
+      @close="selectedSession = null"
+    />
   </div>
 </template>

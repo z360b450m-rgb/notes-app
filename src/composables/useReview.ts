@@ -104,18 +104,44 @@ export interface ReviewState {
   sessionDone: Ref<boolean>
   sessionRecords: Ref<SessionRecord[]>
   totalSessionMs: ComputedRef<number>
-  startReview: (force?: boolean) => boolean
+  startReview: (options?: ReviewOptions | boolean) => boolean
   revealAnswer: () => void
-  rateCard: (rating: number | string, note?: string) => Promise<void>
+  rateCard: (rating: number | string, note?: string, outcome?: ReviewOutcome) => Promise<void>
   exitReview: () => void
   dismissSummary: () => void
   loadLogs: () => Promise<void>
+}
+
+export interface ReviewOptions {
+  scope?: 'due' | 'all'
+  tags?: string[]
+  subjects?: string[]
+  random?: boolean
+  limit?: number
 }
 
 export interface SessionRecord {
   entryId: string
   elapsedMs: number
   quality: number | string
+  selectedChoice?: string
+  correctChoice?: string
+  isCorrect?: boolean
+}
+
+export interface ReviewOutcome {
+  selectedChoice?: string
+  correctChoice?: string
+  isCorrect?: boolean
+}
+
+interface ReviewSessionContext extends ReviewOutcome {
+  sessionId: string
+  reviewScope: 'due' | 'all'
+  sessionSize: number
+  sessionCompleted: boolean
+  elapsedMs: number
+  reviewNote?: string
 }
 
 // ===================================================================
@@ -192,6 +218,8 @@ export function useReview(
 
   const sessionDone = ref(false)
   const sessionRecords = ref<SessionRecord[]>([])
+  const activeSessionId = ref('')
+  const activeReviewScope = ref<'due' | 'all'>('due')
 
   const totalSessionMs = computed(() =>
     sessionRecords.value.reduce((sum, r) => sum + r.elapsedMs, 0),
@@ -257,16 +285,29 @@ export function useReview(
     return (reviewIndex.value / reviewQueue.value.length) * 100
   })
 
-  function startReview(force = false): boolean {
-    forceAll.value = force
+  function startReview(options: ReviewOptions | boolean = {}): boolean {
+    // Boolean input remains supported for existing keyboard and UI callers.
+    const config: ReviewOptions =
+      typeof options === 'boolean' ? { scope: options ? 'all' : 'due' } : options
+    const scope = config.scope ?? 'due'
+    forceAll.value = scope === 'all'
 
-    const pool = force ? entries.value : dueEntries.value
+    let pool = scope === 'all' ? entries.value : dueEntries.value
+    if (config.tags?.length) {
+      pool = pool.filter((entry) => config.tags!.some((tag) => entry.tags.includes(tag)))
+    }
+    if (config.subjects?.length) {
+      pool = pool.filter((entry) => config.subjects!.includes(entry.subject))
+    }
 
     if (pool.length === 0) {
       return false
     }
 
-    reviewQueue.value = shuffle(pool)
+    const ordered = config.random === false ? [...pool] : shuffle(pool)
+    reviewQueue.value = config.limit && config.limit > 0 ? ordered.slice(0, config.limit) : ordered
+    activeSessionId.value = `rvs_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    activeReviewScope.value = scope
     mode.value = 'review'
     reviewIndex.value = 0
     answered.value = false
@@ -281,7 +322,7 @@ export function useReview(
     stopTimer()
   }
 
-  async function rateCard(rating: number | string, note?: string) {
+  async function rateCard(rating: number | string, note?: string, outcome?: ReviewOutcome) {
     const card = currentCard.value
     if (!card) return
 
@@ -310,7 +351,16 @@ export function useReview(
       // 2. 核心修复：首先尝试将更新后的副本写入数据库
       // 此时如果写入失败，会直接进入 catch 块，不会影响到界面和真实的 Vue 状态
       await db.put(JSON.parse(JSON.stringify(entryClone)))
-      await addLog(entryClone.id, rating)
+      const sessionContext: ReviewSessionContext = {
+        ...outcome,
+        sessionId: activeSessionId.value,
+        reviewScope: activeReviewScope.value,
+        sessionSize: reviewQueue.value.length,
+        sessionCompleted: reviewIndex.value >= reviewQueue.value.length - 1,
+        elapsedMs: elapsedMs.value,
+        reviewNote: note?.trim() || undefined,
+      }
+      await addLog(entryClone.id, rating, sessionContext)
     } catch (err) {
       console.error('Failed to save review result', err)
       showToast?.('保存复习记录失败，请重试')
@@ -326,6 +376,7 @@ export function useReview(
       entryId: entry.id,
       elapsedMs: elapsedMs.value,
       quality: rating,
+      ...outcome,
     })
 
     if (reviewIndex.value < reviewQueue.value.length - 1) {

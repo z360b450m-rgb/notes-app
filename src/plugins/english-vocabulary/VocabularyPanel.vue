@@ -38,6 +38,7 @@ const busy = ref(false)
 const message = ref('')
 const sessionComplete = ref(false)
 const wordSearch = ref('')
+const wordTagFilter = ref<string | null>(null)
 const wordPage = ref(1)
 const wordsPerPage = 50
 const { speak, stop } = useVocabularySpeech()
@@ -75,6 +76,14 @@ const addWordOpen = ref(false)
 const editingWordId = ref<string | null>(null)
 const deleteWordOpen = ref(false)
 const deletingWord = ref<VocabularyWord | null>(null)
+const textImportOpen = ref(false)
+const textImportName = ref('')
+const textImportText = ref('')
+const textImportTargetId = ref('__new__')
+const textImportBatchTags = ref('')
+const textImportMeaningLabels = ref('释义, 含义, 定义, 解释')
+const textImportExampleLabels = ref('例句, 示例, 用法, 案例')
+const textImportDetailsLabels = ref('解析, 说明, 知识点, 备注')
 const wordDraft = ref({
   word: '',
   phonetic: '',
@@ -85,6 +94,154 @@ const wordDraft = ref({
   details: '',
   tags: '',
 })
+
+interface TextImportItem {
+  word: string
+  meaning: string
+  exampleEn: string
+  details: string
+  tags: string[]
+}
+
+interface TextImportLabels {
+  meaning: string[]
+  example: string[]
+  details: string[]
+}
+
+function splitImportLabels(value: string, fallback: string[]): string[] {
+  const labels = value
+    .split(/[,，]/)
+    .map((label) => label.trim())
+    .filter(Boolean)
+  return labels.length ? labels : fallback
+}
+
+const textImportLabels = computed<TextImportLabels>(() => ({
+  meaning: splitImportLabels(textImportMeaningLabels.value, ['释义']),
+  example: splitImportLabels(textImportExampleLabels.value, ['例句']),
+  details: splitImportLabels(textImportDetailsLabels.value, ['解析']),
+}))
+const textImportTarget = computed(() =>
+  archives.value.find((item) => item.id === textImportTargetId.value),
+)
+const textImportPreview = computed(() =>
+  parseTextImport(textImportText.value, textImportLabels.value),
+)
+
+function parseTextImport(raw: string, labels: TextImportLabels): TextImportItem[] {
+  const structuredItems = parseStructuredTextImport(raw, labels)
+  if (structuredItems.length) return structuredItems
+
+  const partOfSpeech = /^(?:n|v|vi|vt|adj|adv|prep|pron|conj|num|art|aux|phr|phrase|abbr)\.?$/i
+  return raw
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((rawLine) => {
+      const line = rawLine
+        .trim()
+        .replace(/^\s*\d+\s*[.、)）]?\s*/, '')
+        .trim()
+      if (!line || /^(?:序号|编号|单词|英文|词性|中文|释义)/.test(line)) return null
+
+      const columns = line.split(/\t+|\s{2,}/).filter(Boolean)
+      const tokens = line.split(/\s+/).filter(Boolean)
+      const partIndex = tokens.findIndex((token) => partOfSpeech.test(token))
+      const chineseIndex = line.search(/[\u3400-\u9fff]/)
+
+      let word = ''
+      let meaning = ''
+      let tag = ''
+      if (partIndex >= 0) {
+        word = tokens.slice(0, partIndex).join(' ')
+        tag = tokens[partIndex]
+        meaning = tokens.slice(partIndex + 1).join(' ')
+      } else if (columns.length >= 2) {
+        word = columns[0]
+        meaning = columns.slice(1).join(' ')
+      } else if (chineseIndex > 0) {
+        word = line.slice(0, chineseIndex).trim()
+        meaning = line.slice(chineseIndex).trim()
+      }
+      if (!word || !meaning || /[\u3400-\u9fff]/.test(word)) return null
+      return { word, meaning, exampleEn: '', details: '', tags: tag ? [tag] : [] }
+    })
+    .filter((item): item is TextImportItem => !!item)
+}
+
+/**
+ * Parses cards copied from documents in this form:
+ * TERM\n释义：...\n例句：...\n解析：...
+ * Code examples may span multiple lines, so only a line followed by “释义：”
+ * can begin the next card.
+ */
+function parseStructuredTextImport(raw: string, labels: TextImportLabels): TextImportItem[] {
+  const lines = raw.replace(/\r\n?/g, '\n').split('\n')
+  const marker = (aliases: string[], colonRequired: boolean) =>
+    new RegExp(
+      `^\\s*(?:${aliases.map((alias) => alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\s*${colonRequired ? '[:：]' : '[:：]?'}\\s*(.*)$`,
+      'i',
+    )
+  const meaningMarker = marker(labels.meaning, true)
+  const exampleMarker = marker(labels.example, false)
+  const detailsMarker = marker(labels.details, true)
+  const nextNonEmpty = (start: number) => {
+    for (let index = start; index < lines.length; index += 1) {
+      if (lines[index].trim()) return index
+    }
+    return -1
+  }
+  const isCardStart = (index: number) => {
+    const term = lines[index]?.trim()
+    const following = nextNonEmpty(index + 1)
+    return !!term && !meaningMarker.test(term) && following >= 0 && meaningMarker.test(lines[following])
+  }
+
+  const items: TextImportItem[] = []
+  let index = 0
+  while (index < lines.length) {
+    if (!isCardStart(index)) {
+      index += 1
+      continue
+    }
+    const word = lines[index].trim()
+    const meaningIndex = nextNonEmpty(index + 1)
+    const meaning = lines[meaningIndex].match(meaningMarker)?.[1].trim() || ''
+    const exampleLines: string[] = []
+    const detailLines: string[] = []
+    let section: 'example' | 'details' | null = null
+    index = meaningIndex + 1
+
+    while (index < lines.length && !isCardStart(index)) {
+      const line = lines[index]
+      const example = line.match(exampleMarker)
+      const details = line.match(detailsMarker)
+      if (example) {
+        section = 'example'
+        if (example[1].trim()) exampleLines.push(example[1].trim())
+      } else if (details) {
+        section = 'details'
+        if (details[1].trim()) detailLines.push(details[1].trim())
+      } else if (section === 'example') {
+        exampleLines.push(line)
+      } else if (section === 'details') {
+        detailLines.push(line)
+      }
+      index += 1
+    }
+
+    if (word && meaning) {
+      items.push({
+        word,
+        meaning,
+        exampleEn: exampleLines.join('\n').trim(),
+        details: detailLines.join('\n').trim(),
+        tags: [],
+      })
+    }
+  }
+  return items
+}
 const curveIntervalsDraft = ref<number[]>([])
 const wrongRetryDraft = ref(10)
 const todayPreviewOpen = ref(false)
@@ -124,14 +281,20 @@ const futureReviewBuckets = computed(() => {
 const filteredVocabularyWords = computed(() => {
   if (!archive.value) return []
   const query = wordSearch.value.trim().toLowerCase()
-  if (!query) return archive.value.words
-  return archive.value.words.filter((word) =>
-    [plainText(word.word), plainText(word.meaning), plainText(word.phonetic), word.tags.join(' ')]
+  return archive.value.words.filter((word) => {
+    if (wordTagFilter.value && !word.tags.includes(wordTagFilter.value)) return false
+    if (!query) return true
+    return [plainText(word.word), plainText(word.meaning), plainText(word.phonetic), word.tags.join(' ')]
       .join(' ')
       .toLowerCase()
-      .includes(query),
-  )
+      .includes(query)
+  })
 })
+const vocabularyTags = computed(() =>
+  Array.from(new Set(archive.value?.words.flatMap((word) => word.tags) ?? [])).sort((a, b) =>
+    a.localeCompare(b, 'zh-CN'),
+  ),
+)
 const wordPageCount = computed(() =>
   Math.max(1, Math.ceil(filteredVocabularyWords.value.length / wordsPerPage)),
 )
@@ -193,6 +356,107 @@ async function createArchive() {
     message.value = `已新建词库“${name}”`
   } catch (error) {
     message.value = error instanceof Error ? error.message : '新建词库失败'
+  } finally {
+    busy.value = false
+  }
+}
+
+function openTextImport() {
+  textImportText.value = ''
+  textImportTargetId.value = archive.value?.id || '__new__'
+  textImportName.value = '导入单词'
+  textImportBatchTags.value = ''
+  textImportOpen.value = true
+}
+
+async function confirmTextImport() {
+  if (!textImportPreview.value.length || busy.value) return
+  if (textImportTargetId.value === '__new__' && !textImportName.value.trim()) return
+
+  busy.value = true
+  let createdArchive = false
+  let createdArchiveId = ''
+  try {
+    let targetArchive: VocabularyArchive
+    let targetProgress: VocabularyProgress
+    if (textImportTargetId.value === '__new__') {
+      targetArchive = await vocabularyService.createArchive(props.notebookId, textImportName.value.trim())
+      targetProgress = await vocabularyService.loadProgress(props.notebookId, targetArchive.id)
+      createdArchive = true
+      createdArchiveId = targetArchive.id
+    } else {
+      targetArchive =
+        archive.value?.id === textImportTargetId.value
+          ? archive.value
+          : await vocabularyService.load(props.notebookId, textImportTargetId.value)
+      if (!targetArchive) throw new Error('未找到要追加的词库')
+      targetProgress =
+        progress.value && archive.value?.id === targetArchive.id
+          ? progress.value
+          : await vocabularyService.loadProgress(props.notebookId, targetArchive.id)
+    }
+    const existingWords = new Set(targetArchive.words.map((word) => plainText(word.word).toLowerCase()))
+    const batchTags = textImportBatchTags.value
+      .split(/[,，]/)
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+    const uniqueItems = textImportPreview.value.filter((item) => {
+      const key = item.word.toLowerCase()
+      if (existingWords.has(key)) return false
+      existingWords.add(key)
+      return true
+    })
+    if (!uniqueItems.length) {
+      if (createdArchive) await vocabularyService.delete(props.notebookId, targetArchive.id)
+      message.value = '预览中的单词已全部存在于当前词库'
+      return
+    }
+
+    const startIndex = targetArchive.words.length
+    const now = Date.now()
+    const newWords: VocabularyWord[] = uniqueItems.map((item, index) => ({
+      id: `text-${now}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+      noteId: now + index,
+      deckId: 0,
+      modelId: 0,
+      fields: [item.word, item.meaning],
+      word: item.word,
+      phonetic: '',
+      meaning: item.meaning,
+      exampleEn: item.exampleEn,
+      exampleZh: '',
+      note: '',
+      details: item.details,
+      audioFiles: [],
+      tags: Array.from(new Set([...item.tags, ...batchTags])),
+    }))
+    targetArchive.words.push(...newWords)
+    try {
+      await vocabularyService.saveArchive(props.notebookId, targetArchive.id, targetArchive)
+      archive.value = targetArchive
+      progress.value = targetProgress
+      view.value = 'library'
+      await ensureDailyPlan(true)
+    } catch (error) {
+      targetArchive.words.splice(startIndex, newWords.length)
+      throw error
+    }
+    await reloadArchives()
+    textImportOpen.value = false
+    message.value = `已导入 ${newWords.length} 个单词${uniqueItems.length < textImportPreview.value.length ? '，重复单词已跳过' : ''}`
+  } catch (error) {
+    if (createdArchive) {
+      if (createdArchiveId) {
+        try {
+          await vocabularyService.delete(props.notebookId, createdArchiveId)
+        } catch (cleanupError) {
+          console.error('Failed to remove empty imported archive', cleanupError)
+        }
+      }
+      archive.value = null
+      progress.value = null
+    }
+    message.value = error instanceof Error ? error.message : '单词导入失败，请重试'
   } finally {
     busy.value = false
   }
@@ -683,12 +947,18 @@ function returnToLibrary() {
 
 function openVocabularyWords() {
   wordSearch.value = ''
+  wordTagFilter.value = null
   wordPage.value = 1
   view.value = 'words'
 }
 
 function updateWordSearch(value: string) {
   wordSearch.value = value
+  wordPage.value = 1
+}
+
+function setWordTagFilter(tag: string | null) {
+  wordTagFilter.value = tag
   wordPage.value = 1
 }
 
@@ -790,6 +1060,23 @@ onUnmounted(() => {
           <path d="M5 21h14" />
         </svg>
         导入 APKG 词库
+      </button>
+      <button
+        class="mt-2 flex w-full items-center justify-center gap-2 rounded-[8px] border border-[#d97757] px-4 py-2.5 text-sm font-medium text-[#d97757] hover:bg-[#fdf0e8] dark:hover:bg-[#2e2018]"
+        @click="openTextImport"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M4 5h16M4 12h16M4 19h16" />
+          <path d="M8 3v18M16 3v18" />
+        </svg>
+        粘贴表格导入
       </button>
       <button
         class="mt-2 flex w-full items-center justify-center gap-2 rounded-[8px] border border-[#788c5d] px-4 py-2.5 text-sm font-medium text-[#65784d] hover:bg-[#f3f6ef] dark:hover:bg-[#20251c]"
@@ -1100,6 +1387,25 @@ onUnmounted(() => {
             />
           </div>
         </div>
+        <div v-if="vocabularyTags.length" class="mt-4 flex flex-wrap items-center gap-2">
+          <span class="text-xs text-[#888]">标签筛选：</span>
+          <button
+            class="rounded-full border px-2.5 py-1 text-xs transition-colors"
+            :class="wordTagFilter === null ? 'border-[#788c5d] bg-[#f3f6ef] text-[#52633e] dark:bg-[#20251c]' : 'border-[#ddd] text-[#777] dark:border-[#444]'"
+            @click="setWordTagFilter(null)"
+          >
+            全部
+          </button>
+          <button
+            v-for="tag in vocabularyTags"
+            :key="tag"
+            class="rounded-full border px-2.5 py-1 text-xs transition-colors"
+            :class="wordTagFilter === tag ? 'border-[#788c5d] bg-[#f3f6ef] text-[#52633e] dark:bg-[#20251c]' : 'border-[#ddd] text-[#777] dark:border-[#444]'"
+            @click="setWordTagFilter(tag)"
+          >
+            # {{ tag }}
+          </button>
+        </div>
         <div class="mt-5 overflow-hidden border-y border-[#e8e6dc] dark:border-[#333]">
           <div
             class="grid grid-cols-[minmax(130px,1fr)_minmax(180px,2fr)_100px_96px] gap-4 bg-[#f5f4ef] px-4 py-2 text-xs font-semibold text-[#777] dark:bg-[#252523]"
@@ -1123,6 +1429,14 @@ onUnmounted(() => {
                 class="mt-1 block truncate text-xs text-[#888]"
                 v-html="cleanHtml(word.phonetic)"
               />
+              <span v-if="word.tags.length" class="mt-1 flex flex-wrap gap-1">
+                <span
+                  v-for="tag in word.tags"
+                  :key="tag"
+                  class="rounded bg-[#f3f6ef] px-1.5 py-0.5 text-[10px] text-[#65784d] dark:bg-[#20251c]"
+                  ># {{ tag }}</span
+                >
+              </span>
             </div>
             <div class="preserve-input-format min-w-0 break-words leading-6" v-html="cleanHtml(word.meaning)" />
             <span class="text-xs text-[#888]">{{ wordStatus(word.id) }}</span>
@@ -1462,6 +1776,102 @@ onUnmounted(() => {
             @click="confirmImport"
           >
             {{ busy ? '正在归档...' : '确认并归档' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="textImportOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+      @click.self="!busy && (textImportOpen = false)"
+    >
+      <div
+        class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[8px] bg-white p-6 text-[#141413] shadow-xl dark:bg-[#1e1e1c] dark:text-[#faf9f5]"
+      >
+        <h2 class="text-lg font-bold">粘贴表格导入单词</h2>
+        <p class="mt-2 text-sm leading-6 text-[#777] dark:text-[#aaa]">
+          支持对齐表格，也支持“术语 + 释义 + 例句 + 解析”的知识卡片；词性会自动保存为标签。
+        </p>
+        <p class="mt-1 rounded-[8px] bg-[#f5f4ef] px-3 py-2 font-mono text-xs leading-5 text-[#777] dark:bg-[#252523]">
+          SELECT<br />释义：查询数据<br />例句：SELECT * FROM materials;<br />解析：* 表示所有字段。
+        </p>
+        <label class="mt-5 block text-sm">
+          <span class="mb-1 block text-xs text-[#777]">导入目标</span>
+          <select
+            v-model="textImportTargetId"
+            class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 outline-none focus:border-[#d97757] dark:border-[#444]"
+          >
+            <option value="__new__">新建词库</option>
+            <option v-for="item in archives" :key="item.id" :value="item.id">
+              追加到：{{ item.name }}（{{ item.wordCount }} 个词）
+            </option>
+          </select>
+        </label>
+        <label v-if="textImportTargetId === '__new__'" class="mt-4 block text-sm">
+          <span class="mb-1 block text-xs text-[#777]">新词库名称</span>
+          <input
+            v-model="textImportName"
+            maxlength="80"
+            class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 outline-none focus:border-[#d97757] dark:border-[#444]"
+          />
+        </label>
+        <div class="mt-4 grid gap-3 sm:grid-cols-3">
+          <label class="text-sm">
+            <span class="mb-1 block text-xs text-[#777]">释义字段别名</span>
+            <input v-model="textImportMeaningLabels" class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]" />
+          </label>
+          <label class="text-sm">
+            <span class="mb-1 block text-xs text-[#777]">例句字段别名</span>
+            <input v-model="textImportExampleLabels" class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]" />
+          </label>
+          <label class="text-sm">
+            <span class="mb-1 block text-xs text-[#777]">解析字段别名</span>
+            <input v-model="textImportDetailsLabels" class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]" />
+          </label>
+        </div>
+        <label class="mt-4 block text-sm">
+          <span class="mb-1 block text-xs text-[#777]">为本次导入统一添加标签</span>
+          <input
+            v-model="textImportBatchTags"
+            class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-sm outline-none focus:border-[#d97757] dark:border-[#444]"
+            placeholder="例如：SQL, 数据库, 后端（多个标签用逗号分隔）"
+          />
+        </label>
+        <label class="mt-5 block text-sm">
+          <span class="mb-1 block text-xs text-[#777]">单词表内容</span>
+          <textarea
+            v-model="textImportText"
+            rows="12"
+            class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 font-mono text-sm leading-6 outline-none focus:border-[#d97757] dark:border-[#444]"
+            placeholder="在此粘贴单词表…"
+            :disabled="busy"
+          />
+        </label>
+        <div class="mt-4 rounded-[8px] bg-[#f3f6ef] px-3 py-3 text-sm text-[#52633e] dark:bg-[#20251c] dark:text-[#c8d7b5]">
+          已识别 {{ textImportPreview.length }} 个有效单词
+          <span v-if="textImportTargetId === '__new__'">，将新建词库“{{ textImportName || '未命名词库' }}”</span>
+          <span v-else>，将追加到“{{ textImportTarget?.name || '未选择词库' }}”</span>
+          <ul v-if="textImportPreview.length" class="mt-2 space-y-1 text-xs">
+            <li v-for="item in textImportPreview.slice(0, 5)" :key="item.word">
+              {{ item.word }} <span v-if="item.tags.length">{{ item.tags.join(' ') }}</span> · {{ item.meaning }}
+            </li>
+          </ul>
+        </div>
+        <div class="mt-6 flex justify-end gap-3">
+          <button
+            class="rounded-[8px] border border-[#ddd] px-5 py-2 text-sm dark:border-[#444]"
+            :disabled="busy"
+            @click="textImportOpen = false"
+          >
+            取消
+          </button>
+          <button
+            class="rounded-[8px] bg-[#d97757] px-5 py-2 text-sm text-white disabled:opacity-50"
+            :disabled="busy || !textImportPreview.length || (textImportTargetId === '__new__' && !textImportName.trim())"
+            @click="confirmTextImport"
+          >
+            {{ busy ? '正在导入...' : '一键导入' }}
           </button>
         </div>
       </div>

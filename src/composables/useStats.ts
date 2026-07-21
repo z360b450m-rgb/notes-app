@@ -1,5 +1,5 @@
 import { computed, type Ref, type ComputedRef } from 'vue'
-import type { NoteEntry } from '@/types'
+import type { NoteEntry, ReviewLog } from '@/types'
 import { useReviewLogs } from '@/composables/useReviewLogs'
 
 function isToday(ts: number): boolean {
@@ -59,6 +59,31 @@ export interface StatsState {
   subjectBars: ComputedRef<{ name: string; count: number; pct: number }[]>
   weeklyActivity: ComputedRef<{ day: string; count: number; max: number }[]>
   masteryBuckets: ComputedRef<{ label: string; count: number; pct: number; color: string }[]>
+  dueReviewHistory: ComputedRef<ReviewHistorySession[]>
+  freeReviewHistory: ComputedRef<ReviewHistorySession[]>
+}
+
+export interface ReviewHistorySession {
+  id: string
+  completedAt: number
+  reviewedCount: number
+  totalCount: number
+  totalElapsedMs: number
+  entries: {
+    entryId: string
+    title: string
+    subject: string
+    tags: string[]
+    question: string
+    wrongAnswer: string
+    correctAnswer: string
+    quality: number | string
+    isCorrect?: boolean
+    selectedChoice?: string
+    correctChoice?: string
+    elapsedMs: number
+    reviewNote?: string
+  }[]
 }
 
 // ===================================================================
@@ -136,6 +161,57 @@ export function useStats(entries: Ref<NoteEntry[]>): StatsState {
     })
   })
 
+  function buildReviewHistory(scope: 'due' | 'all'): ReviewHistorySession[] {
+    const entryMap = new Map(entries.value.map((entry) => [entry.id, entry]))
+    const sessions = new Map<string, ReviewLog[]>()
+
+    for (const log of activeLogs.value) {
+      if (!log.sessionId || log.reviewScope !== scope || !log.sessionSize) continue
+      const group = sessions.get(log.sessionId) ?? []
+      group.push(log)
+      sessions.set(log.sessionId, group)
+    }
+
+    return Array.from(sessions.entries())
+      .filter(([, logs]) => logs.some((log) => log.sessionCompleted))
+      .map(([id, logs]) => {
+        const ordered = [...logs].sort((a, b) => a.timestamp - b.timestamp)
+        const last = ordered[ordered.length - 1]
+        return {
+          id,
+          completedAt: last.timestamp,
+          reviewedCount: ordered.length,
+          totalCount: Math.max(...ordered.map((log) => log.sessionSize ?? 0)),
+          totalElapsedMs: ordered.reduce((sum, log) => sum + (log.elapsedMs ?? 0), 0),
+          entries: ordered.map((log) => {
+            const entry = entryMap.get(log.entryId)
+            return {
+              entryId: log.entryId,
+              title:
+                entry?.title ||
+                entry?.question.replace(/<[^>]*>/g, '').slice(0, 60) ||
+                '题目已删除',
+              subject: entry?.subject || '未分类',
+              tags: entry?.tags ?? [],
+              question: entry?.question ?? '',
+              wrongAnswer: entry?.wrongAnswer ?? '',
+              correctAnswer: entry?.correctAnswer ?? '',
+              quality: log.quality,
+              isCorrect: log.isCorrect,
+              selectedChoice: log.selectedChoice,
+              correctChoice: log.correctChoice,
+              elapsedMs: log.elapsedMs ?? 0,
+              reviewNote: log.reviewNote,
+            }
+          }),
+        }
+      })
+      .sort((a, b) => b.completedAt - a.completedAt)
+  }
+
+  const dueReviewHistory = computed(() => buildReviewHistory('due'))
+  const freeReviewHistory = computed(() => buildReviewHistory('all'))
+
   return {
     totalCount,
     dueCount,
@@ -144,5 +220,7 @@ export function useStats(entries: Ref<NoteEntry[]>): StatsState {
     subjectBars,
     weeklyActivity,
     masteryBuckets,
+    dueReviewHistory,
+    freeReviewHistory,
   }
 }

@@ -24,12 +24,28 @@ export function useReviewLogs(getNotebookId: () => string) {
     }
   }
 
-  async function addLog(entryId: string, quality: number | string) {
+  async function addLog(
+    entryId: string,
+    quality: number | string,
+    context?: Pick<
+      ReviewLog,
+      | 'selectedChoice'
+      | 'correctChoice'
+      | 'isCorrect'
+      | 'sessionId'
+      | 'reviewScope'
+      | 'sessionSize'
+      | 'sessionCompleted'
+      | 'elapsedMs'
+      | 'reviewNote'
+    >,
+  ) {
     const log: ReviewLog = {
       id: genId(),
       entryId,
       timestamp: Date.now(),
       quality,
+      ...context,
     }
     try {
       await db.addReviewLog(getNotebookId(), log)
