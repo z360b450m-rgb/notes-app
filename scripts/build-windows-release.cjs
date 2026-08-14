@@ -40,6 +40,8 @@ run(
   [
     '--win',
     target,
+    '--publish',
+    'never',
     `--config.electronDist=${electronDist}`,
     `--config.directories.output=${outputDir}`,
     // Keep Windows resource editing enabled so the configured app icon and
