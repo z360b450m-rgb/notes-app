@@ -26,6 +26,14 @@ function run(command, args, extraEnv = {}) {
 fs.mkdirSync(builderCache, { recursive: true })
 fs.writeFileSync(path.join(builderCache, 'package.json'), '{"type":"commonjs"}\n')
 
+// Electron 42+ no longer downloads its runtime during npm install. Ensure the
+// local distribution exists before passing electronDist to electron-builder.
+if (!fs.existsSync(path.join(electronDist, 'electron.exe'))) {
+  run(process.execPath, [path.join(projectRoot, 'node_modules', 'electron', 'install.js')], {
+    NODE_OPTIONS: '--use-system-ca',
+  })
+}
+
 run('npm.cmd', ['run', 'build', '--', '--configLoader', 'runner'])
 run(
   path.join(projectRoot, 'node_modules', '.bin', 'electron-builder.cmd'),

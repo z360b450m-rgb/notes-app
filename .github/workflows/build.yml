@@ -47,3 +47,34 @@ jobs:
           name: dist
           path: dist/
           if-no-files-found: ignore
+
+  package-windows:
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows installer
+        run: npm run build:win:installer
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cuotiben-Windows-Installer
+          path: |
+            dist-electron/releases/**/*.exe
+            dist-electron/releases/**/*.blockmap
+          if-no-files-found: error
+          retention-days: 30
