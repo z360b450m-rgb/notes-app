@@ -334,6 +334,12 @@ onUnmounted(() => {
         >
           {{ entry.subject }}
         </span>
+        <span
+          v-if="entry.groupId"
+          class="px-1.5 py-px rounded-sm bg-sky-50 dark:bg-sky-500/10 text-sky-500 text-[10px]"
+        >
+          题组 {{ (entry.subQuestionOrder ?? 0) + 1 }}
+        </span>
         <span>{{ formatDate(entry.updatedAt) }}</span>
         <span v-if="entry.source" class="opacity-60">{{ entry.source }}</span>
       </div>

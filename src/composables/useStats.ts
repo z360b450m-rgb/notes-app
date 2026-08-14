@@ -92,8 +92,8 @@ export interface ReviewHistorySession {
 // MASTERY_LEVEL_DEFS 为模块级常量, 被 useFilter 等引用。
 // StatsState 返回值类型必须向后兼容。
 // ===================================================================
-export function useStats(entries: Ref<NoteEntry[]>): StatsState {
-  const { reviewLogs, loadLogs } = useReviewLogs()
+export function useStats(entries: Ref<NoteEntry[]>, getNotebookId: () => string): StatsState {
+  const { reviewLogs, loadLogs } = useReviewLogs(getNotebookId)
   loadLogs()
 
   // Only count logs for entries that still exist (filters orphans from deleted entries)

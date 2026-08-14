@@ -1,4 +1,5 @@
 import { ref, onUnmounted, type Ref } from 'vue'
+import { toDisplayImageUrl } from '@/services/imageStorage'
 
 export type DrawTool = 'pen' | 'eraser'
 
@@ -43,7 +44,7 @@ export interface DrawingState {
   mountCanvas: (container: HTMLElement, field: string) => void
   captureDrawing: (field: string) => string | null
   captureAllDrawings: () => Record<string, string>
-  setStoredDrawing: (entryId: string, field: string, dataUrl: string) => void
+  setStoredDrawing: (entryId: string, field: string, source: string) => void
   setCanvasParent: (el: HTMLElement | null) => void
 }
 
@@ -345,7 +346,9 @@ export function useDrawing(onChange?: () => void): DrawingState {
     saveSnapshot(s)
     const dpr = window.devicePixelRatio || 1
     s.ctx.clearRect(0, 0, s.canvas.width / dpr, s.canvas.height / dpr)
-    dirtyFields.delete(activeField)
+    // Keep the field dirty so persistence replaces an existing annotation
+    // with the now-empty canvas instead of restoring it on the next load.
+    dirtyFields.add(activeField)
     onChange?.()
   }
 
@@ -367,8 +370,8 @@ export function useDrawing(onChange?: () => void): DrawingState {
     return result
   }
 
-  function setStoredDrawing(entryId: string, field: string, dataUrl: string) {
-    drawingStore.set(`${entryId}:${field}`, dataUrl)
+  function setStoredDrawing(entryId: string, field: string, source: string) {
+    drawingStore.set(`${entryId}:${field}`, toDisplayImageUrl(source))
   }
 
   function toggleDrawing() {

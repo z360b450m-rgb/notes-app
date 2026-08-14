@@ -337,6 +337,7 @@ function cancelAddSource() {
       </button>
       <button
         class="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 dark:text-brand-mid hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#1e1e1c] border border-gray-200 dark:border-[#2e2e2c] transition-all duration-200 mt-auto mb-4"
+        data-testid="settings-toggle"
         title="设置"
         @click="emit('toggle-settings')"
       >
@@ -1000,6 +1001,7 @@ function cancelAddSource() {
       <div class="px-4 py-3 border-t border-gray-100 dark:border-[#2e2e2c]">
         <button
           class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-[8px] text-[13px] text-brand-mid dark:text-brand-mid hover:text-brand-dark dark:hover:text-brand-light-gray hover:bg-brand-light-gray dark:hover:bg-[#2a2a28] transition-colors"
+          data-testid="settings-toggle"
           @click="emit('toggle-settings')"
         >
           <svg

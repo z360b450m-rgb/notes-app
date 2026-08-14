@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // @AI-NOTE: 工作区布局组件 —— 仅编排子组件布局。数据通过 props/events
 // 委托给 App.vue, 禁止直接操作存储或编写业务逻辑。
-import { ref } from 'vue'
-import type { NoteEntry } from '@/types'
+import { computed, ref } from 'vue'
+import type { NoteEntry, QuestionGroup } from '@/types'
 import type { SortKey, SortDir } from '@/composables/useFilter'
 import type { StatsState } from '@/composables/useStats'
 import type { ReviewOutcome, SessionRecord } from '@/composables/useReview'
@@ -20,9 +20,12 @@ import UnsavedModal from './UnsavedModal.vue'
 const props = defineProps<{
   notebookName: string
   entries: NoteEntry[]
+  questionGroups: QuestionGroup[]
   filteredEntries: NoteEntry[]
   activeId: string | null
   activeEntry: NoteEntry | null | undefined
+  activeGroup: QuestionGroup | null | undefined
+  activeGroupEntries: NoteEntry[]
   answersHidden: boolean
   isDirty: boolean
   selectedIds: Set<string>
@@ -95,6 +98,8 @@ const emit = defineEmits<{
 
   // Entry actions
   'quick-create': [subject: string]
+  'enable-question-group': []
+  'add-sub-question': []
   rename: [id: string, newTitle: string]
   save: []
   'mark-dirty': []
@@ -171,6 +176,10 @@ const emit = defineEmits<{
 }>()
 
 const mainArea = ref<HTMLElement | null>(null)
+const reviewGroup = computed(() => {
+  const groupId = props.currentCard?.groupId
+  return groupId ? props.questionGroups.find((group) => group.id === groupId) : undefined
+})
 let lastWheelNav = 0
 let lastEdgeTime = 0
 
@@ -216,7 +225,7 @@ function onWheel(e: WheelEvent) {
 
 <template>
   <!-- @AI-VIEW: DOM 可自由重构。样式仅限 Tailwind CSS 工具类。严禁内联 style 或自定义 CSS。 -->
-  <div class="flex h-screen bg-white dark:bg-[#141413]">
+  <div class="workspace-ui flex h-screen bg-white dark:bg-[#141413]">
     <AppSidebar
       :notebook-name="notebookName"
       :entries="entries"
@@ -308,11 +317,16 @@ function onWheel(e: WheelEvent) {
           <NoteEditor
             class="flex-1 min-w-0"
             :entry="activeEntry"
+            :group="activeGroup"
+            :group-entries="activeGroupEntries"
             :answers-hidden="answersHidden"
             :all-subjects="allSubjects"
             :all-tags="allTags"
             :all-sources="allSources"
             @update="emit('mark-dirty')"
+            @enable-question-group="emit('enable-question-group')"
+            @add-sub-question="emit('add-sub-question')"
+            @select-sub-question="(id) => emit('select', id)"
             @blur-save="emit('blur-save')"
             @reveal="emit('reveal')"
             @mount-canvas="(el, entryId, field) => emit('mount-canvas', el, entryId, field)"
@@ -324,6 +338,7 @@ function onWheel(e: WheelEvent) {
         <ReviewPanel
           v-else-if="mode === 'review'"
           :entry="currentCard!"
+          :group="reviewGroup"
           :answered="answered"
           :elapsed-ms="elapsedMs"
           :progress="progress"

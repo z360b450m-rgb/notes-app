@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import type { ReviewLog } from '@/types'
-import { db } from '@/services/db'
+import { reviewLogRepository } from '@/services/db'
 
 function genId(): string {
   return 'rvlog_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)
@@ -18,7 +18,8 @@ const reviewLogs = ref<ReviewLog[]>([])
 export function useReviewLogs(getNotebookId: () => string) {
   async function loadLogs() {
     try {
-      reviewLogs.value = await db.getAllReviewLogs(getNotebookId())
+      const notebookId = getNotebookId()
+      reviewLogs.value = notebookId ? await reviewLogRepository.getAll(notebookId) : []
     } catch {
       reviewLogs.value = []
     }
@@ -48,7 +49,7 @@ export function useReviewLogs(getNotebookId: () => string) {
       ...context,
     }
     try {
-      await db.addReviewLog(getNotebookId(), log)
+      await reviewLogRepository.add(getNotebookId(), log)
     } catch (err) {
       console.error('Failed to save review log', err)
     }
@@ -57,7 +58,7 @@ export function useReviewLogs(getNotebookId: () => string) {
 
   async function deleteLogsByEntry(entryId: string) {
     try {
-      await db.deleteReviewLogsByEntry(getNotebookId(), entryId)
+      await reviewLogRepository.deleteByEntry(getNotebookId(), entryId)
     } catch (err) {
       console.error('Failed to delete review logs', err)
     }

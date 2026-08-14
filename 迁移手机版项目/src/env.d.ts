@@ -65,10 +65,7 @@ interface Window {
       notebookId: string,
       archiveId: string,
     ) => Promise<VocabularyArchive | null>
-    createVocabularyArchive?: (
-      notebookId: string,
-      name: string,
-    ) => Promise<VocabularyArchive>
+    createVocabularyArchive?: (notebookId: string, name: string) => Promise<VocabularyArchive>
     saveVocabularyArchive?: (
       notebookId: string,
       archiveId: string,

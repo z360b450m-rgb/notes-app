@@ -180,6 +180,7 @@ function save() {
         <div class="pt-4 border-t border-gray-100 dark:border-[#2e2e2c]">
           <button
             class="w-full flex items-center justify-between text-[13px] font-medium text-gray-700 dark:text-brand-light-gray hover:text-accent transition-colors"
+            data-testid="review-settings-toggle"
             @click="reviewExpanded = !reviewExpanded"
           >
             <span>复习设置</span>
@@ -211,6 +212,7 @@ function save() {
                   type="number"
                   min="0"
                   max="365"
+                  data-testid="first-review-days"
                   :value="draft.firstReviewDays"
                   @input="
                     (e: Event) => {
@@ -330,6 +332,7 @@ function save() {
 
             <button
               class="w-full mt-3 px-4 py-2 rounded-lg bg-accent text-white text-[13px] font-medium hover:brightness-110 transition-all active:scale-[0.98]"
+              data-testid="save-review-settings"
               @click="save"
             >
               保存复习设置

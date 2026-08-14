@@ -133,6 +133,24 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Comfortable UI type scale. Rich-text content keeps its own user-controlled size. */
+#app .text-\[10px\] {
+  font-size: 12px;
+}
+#app .text-\[11px\] {
+  font-size: 13px;
+}
+#app .text-\[12px\],
+#app .text-xs {
+  font-size: 14px;
+  line-height: 1.35rem;
+}
+#app .text-\[13px\],
+#app .text-sm {
+  font-size: 15px;
+  line-height: 1.45rem;
+}
 .answer-details img,
 .answer-details video,
 .answer-details iframe {
@@ -213,4 +231,9 @@
 .section-collapse.active .section-collapse-inner {
   opacity: 1;
   transition: opacity 0.3s ease 0.1s;
+}
+/* Rich-text image selected for resizing. This class is removed before persistence. */
+.md-content img.image-size-selected {
+  outline: 2px solid #d97757;
+  outline-offset: 2px;
 }

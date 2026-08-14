@@ -1,11 +1,10 @@
 <script setup lang="ts">
 // @AI-NOTE: 错题本菜单组件 —— 数据操作通过 useNotebooks Hook。
 // 禁止直接操作存储、编写业务逻辑、管理跨组件状态。
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useNotebooks } from '@/composables/useNotebooks'
-import { db } from '@/services/db'
-import type { NoteEntry } from '@/types'
-import { useReviewLogs } from '@/composables/useReviewLogs'
+import { entryRepository, reviewLogRepository } from '@/services/db'
+import type { NoteEntry, ReviewLog } from '@/types'
 import { useDarkMode } from '@/composables/useDarkMode'
 import { useModalAnimations } from '@/composables/useModalAnimations'
 
@@ -22,11 +21,30 @@ const { notebooks, createNotebook, updateNotebook, deleteNotebook, reorderNotebo
 // Load all entries independently — decoupled from the shared entries ref
 // which gets filtered to a single notebook during the page transition.
 const menuEntries = ref<NoteEntry[]>([])
-db.getAll(null).then((result) => {
-  menuEntries.value = result
-})
-const { reviewLogs, loadLogs } = useReviewLogs(() => '')
-loadLogs()
+const menuReviewLogs = ref<ReviewLog[]>([])
+let statsLoadSequence = 0
+
+watch(
+  () => notebooks.value.map((notebook) => notebook.id),
+  async (notebookIds) => {
+    const sequence = ++statsLoadSequence
+    try {
+      const [entriesByNotebook, logsByNotebook] = await Promise.all([
+        Promise.all(notebookIds.map((notebookId) => entryRepository.getAll(notebookId))),
+        Promise.all(notebookIds.map((notebookId) => reviewLogRepository.getAll(notebookId))),
+      ])
+      if (sequence !== statsLoadSequence) return
+      menuEntries.value = entriesByNotebook.flat()
+      menuReviewLogs.value = logsByNotebook.flat()
+    } catch (error) {
+      console.error('Failed to load notebook menu statistics', error)
+      if (sequence !== statsLoadSequence) return
+      menuEntries.value = []
+      menuReviewLogs.value = []
+    }
+  },
+  { immediate: true },
+)
 
 const entryCountByNotebook = computed(() => {
   const map: Record<string, number> = {}
@@ -48,7 +66,7 @@ todayStart.setHours(0, 0, 0, 0)
 const t0 = todayStart.getTime()
 
 const reviewedToday = computed(() => {
-  return reviewLogs.value.filter((l) => l.timestamp >= t0).length
+  return menuReviewLogs.value.filter((l) => l.timestamp >= t0).length
 })
 
 // Entries currently still due (nextReviewDate <= now) — pending, not yet reviewed today
@@ -80,7 +98,7 @@ const entryNotebookMap = computed(() => {
 // Today's completed reviews per notebook
 const reviewedByNotebook = computed(() => {
   const map: Record<string, number> = {}
-  for (const log of reviewLogs.value) {
+  for (const log of menuReviewLogs.value) {
     if (log.timestamp >= t0) {
       const nbId = entryNotebookMap.value[log.entryId]
       if (nbId) {
@@ -645,6 +663,7 @@ function onNotebookClick(id: string) {
             <!-- Add new row -->
             <button
               class="w-full flex items-center justify-center gap-1.5 px-5 py-3 text-[13px] text-brand-mid dark:text-brand-mid hover:text-[#d97757] dark:text-[#f0c4a8] hover:bg-[#fdf0e8]/20 dark:hover:bg-[#2e2018]/20 border-t border-dashed border-[#e8e6dc]/50 dark:border-[#2e2e2c]/50 transition-colors duration-150"
+              data-testid="create-notebook"
               @click="openCreate"
             >
               <svg
@@ -751,6 +770,7 @@ function onNotebookClick(id: string) {
               >
               <input
                 v-model="createName"
+                data-testid="notebook-name"
                 type="text"
                 placeholder="例如：数学错题本"
                 class="w-full mt-1 px-3 py-2 rounded-[8px] border border-[#e8e6dc] dark:border-[#2e2e2c] text-[13px] text-brand-dark dark:text-brand-light bg-white dark:bg-[#1e1e1c] outline-none focus:border-[#d97757] transition-colors"
@@ -763,6 +783,7 @@ function onNotebookClick(id: string) {
               >
               <input
                 v-model="createDesc"
+                data-testid="notebook-description"
                 type="text"
                 placeholder="简短描述"
                 class="w-full mt-1 px-3 py-2 rounded-[8px] border border-[#e8e6dc] dark:border-[#2e2e2c] text-[13px] text-brand-dark dark:text-brand-light bg-white dark:bg-[#1e1e1c] outline-none focus:border-[#d97757] transition-colors"
@@ -780,6 +801,7 @@ function onNotebookClick(id: string) {
             </button>
             <button
               class="px-4 py-2 rounded-[8px] text-[13px] bg-[#d97757] text-white font-medium hover:bg-[#c56a48] transition-colors disabled:opacity-40"
+              data-testid="confirm-create-notebook"
               :disabled="!createName.trim()"
               @click="confirmCreate"
             >

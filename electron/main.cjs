@@ -30,9 +30,21 @@
 //   - src/types/index.ts (数据结构定义)
 //   - src/services/db.ts (渲染进程数据库访问层)
 // ===================================================================
-const { app, BrowserWindow, Menu, ipcMain, dialog, desktopCapturer, shell } = require('electron')
+const {
+  app,
+  BrowserWindow,
+  Menu,
+  ipcMain,
+  dialog,
+  desktopCapturer,
+  shell,
+  protocol,
+  net,
+} = require('electron')
 const path = require('path')
 const fs = require('fs')
+const crypto = require('crypto')
+const { pathToFileURL } = require('url')
 const log = require('electron-log')
 const AdmZip = require('adm-zip')
 const vocabulary = require('./plugins/english-vocabulary/main.cjs')
@@ -48,6 +60,24 @@ process.on('uncaughtException', (error) => {
 let mainWindow
 let dataDir = null
 let pendingVocabularyImportPath = null
+
+const IMAGE_SCHEME = 'cuotiben-image'
+const IMAGE_FIELDS = ['question', 'wrongAnswer', 'correctAnswer']
+const IMAGE_MIME_EXTENSIONS = new Map([
+  ['image/png', 'png'],
+  ['image/jpeg', 'jpg'],
+  ['image/jpg', 'jpg'],
+  ['image/gif', 'gif'],
+  ['image/webp', 'webp'],
+  ['image/bmp', 'bmp'],
+])
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: IMAGE_SCHEME,
+    privileges: { standard: true, secure: true, supportFetchAPI: true },
+  },
+])
 
 function getDefaultDataDir() {
   return path.join(app.getPath('documents'), '错题本')
@@ -70,6 +100,186 @@ function getDataDir() {
     dataDir = getDefaultDataDir()
   }
   return dataDir
+}
+
+function getImagesDir() {
+  return path.join(getDataDir(), 'images')
+}
+
+function normalizeRelativeImagePath(value) {
+  if (typeof value !== 'string') return null
+  let candidate = value.trim().replace(/\\/g, '/')
+  if (candidate.startsWith(`${IMAGE_SCHEME}://local/`)) {
+    candidate = decodeURIComponent(candidate.slice(`${IMAGE_SCHEME}://local/`.length))
+  }
+  candidate = candidate.replace(/^\.\//, '')
+  if (!candidate.startsWith('images/')) return null
+
+  const resolved = path.resolve(getDataDir(), ...candidate.split('/'))
+  const root = path.resolve(getImagesDir())
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) return null
+  return path.relative(getDataDir(), resolved).split(path.sep).join('/')
+}
+
+function imageAbsolutePath(relativePath) {
+  const safeRelativePath = normalizeRelativeImagePath(relativePath)
+  if (!safeRelativePath) throw new Error('Invalid image path')
+  return path.resolve(getDataDir(), ...safeRelativePath.split('/'))
+}
+
+function saveImageBytes(notebookId, bytes, mimeType) {
+  assertSafeId(notebookId)
+  const extension = IMAGE_MIME_EXTENSIONS.get(String(mimeType).toLowerCase())
+  if (!extension) throw new Error(`Unsupported image type: ${mimeType}`)
+
+  const buffer = Buffer.from(bytes)
+  if (buffer.length === 0) throw new Error('Image is empty')
+  if (buffer.length > 25 * 1024 * 1024) throw new Error('Image exceeds the 25 MB limit')
+
+  const notebookImagesDir = path.join(getImagesDir(), notebookId)
+  fs.mkdirSync(notebookImagesDir, { recursive: true })
+  const filename = `${Date.now().toString(36)}_${crypto.randomUUID()}.${extension}`
+  const absolutePath = path.join(notebookImagesDir, filename)
+  fs.writeFileSync(absolutePath, buffer, { flag: 'wx' })
+  return `images/${notebookId}/${filename}`
+}
+
+function normalizeImageUrls(html) {
+  if (typeof html !== 'string') return html
+  return html.replace(
+    /(<img\b[^>]*?\bsrc=["'])(cuotiben-image:\/\/local\/[^"']+)(["'][^>]*>)/gi,
+    (_match, prefix, source, suffix) => {
+      const relativePath = normalizeRelativeImagePath(source)
+      return relativePath ? `${prefix}${relativePath}${suffix}` : _match
+    },
+  )
+}
+
+function externalizeImageSource(source, notebookId) {
+  if (typeof source !== 'string') return source
+  const relativePath = normalizeRelativeImagePath(source)
+  if (relativePath) return relativePath
+  const match = source.match(/^data:(image\/(?:png|jpeg|jpg|gif|webp|bmp));base64,(.+)$/i)
+  if (!match) return source
+  try {
+    return saveImageBytes(notebookId, Buffer.from(match[2], 'base64'), match[1])
+  } catch (err) {
+    log.warn('Failed to externalize an embedded image', err)
+    return source
+  }
+}
+
+function externalizeHtmlImages(html, notebookId) {
+  if (typeof html !== 'string') return html
+  const normalized = normalizeImageUrls(html)
+  return normalized.replace(
+    /(<img\b[^>]*?\bsrc=["'])data:(image\/(?:png|jpeg|jpg|gif|webp|bmp));base64,([^"']+)(["'][^>]*>)/gi,
+    (_match, prefix, mimeType, encoded, suffix) => {
+      try {
+        const relativePath = saveImageBytes(notebookId, Buffer.from(encoded, 'base64'), mimeType)
+        return `${prefix}${relativePath}${suffix}`
+      } catch (err) {
+        log.warn('Failed to externalize an embedded image', err)
+        return _match
+      }
+    },
+  )
+}
+
+function externalizeEntryImages(entry) {
+  if (!entry?.notebookId) return entry
+  const normalized = structuredClone(entry)
+  for (const field of IMAGE_FIELDS) {
+    normalized[field] = externalizeHtmlImages(normalized[field] || '', normalized.notebookId)
+  }
+  if (normalized.drawings && typeof normalized.drawings === 'object') {
+    normalized.drawings = Object.fromEntries(
+      Object.entries(normalized.drawings).map(([field, source]) => [
+        field,
+        externalizeImageSource(source, normalized.notebookId),
+      ]),
+    )
+  }
+  if (typeof normalized.drawing === 'string') {
+    normalized.drawing = externalizeImageSource(normalized.drawing, normalized.notebookId)
+  }
+  return normalized
+}
+
+function externalizeQuestionGroupImages(group) {
+  if (!group?.notebookId) return group
+  const normalized = structuredClone(group)
+  normalized.material = externalizeHtmlImages(normalized.material || '', normalized.notebookId)
+  if (normalized.drawings && typeof normalized.drawings === 'object') {
+    normalized.drawings = Object.fromEntries(
+      Object.entries(normalized.drawings).map(([field, source]) => [
+        field,
+        externalizeImageSource(source, normalized.notebookId),
+      ]),
+    )
+  }
+  return normalized
+}
+
+function collectReferencedImages(nbData) {
+  const referenced = new Set()
+  const records = [
+    ...(nbData.entries || []),
+    ...(nbData.snapshots || []).map((snapshot) => snapshot.data).filter(Boolean),
+  ]
+  for (const record of records) {
+    for (const field of IMAGE_FIELDS) {
+      const html = record[field]
+      if (typeof html !== 'string') continue
+      const sourcePattern = /<img\b[^>]*?\bsrc=["']([^"']+)["']/gi
+      let match
+      while ((match = sourcePattern.exec(html))) {
+        const relativePath = normalizeRelativeImagePath(match[1])
+        if (relativePath) referenced.add(relativePath)
+      }
+    }
+    const drawingSources = [
+      ...Object.values(record.drawings || {}),
+      ...(typeof record.drawing === 'string' ? [record.drawing] : []),
+    ]
+    for (const source of drawingSources) {
+      const relativePath = normalizeRelativeImagePath(source)
+      if (relativePath) referenced.add(relativePath)
+    }
+  }
+  for (const group of nbData.questionGroups || []) {
+    const sourcePattern = /<img\b[^>]*?\bsrc=["']([^"']+)["']/gi
+    let match
+    while ((match = sourcePattern.exec(group.material || ''))) {
+      const relativePath = normalizeRelativeImagePath(match[1])
+      if (relativePath) referenced.add(relativePath)
+    }
+    for (const source of Object.values(group.drawings || {})) {
+      const relativePath = normalizeRelativeImagePath(source)
+      if (relativePath) referenced.add(relativePath)
+    }
+  }
+  return referenced
+}
+
+function cleanupNotebookImages(notebookId, nbData) {
+  assertSafeId(notebookId)
+  const notebookImagesDir = path.join(getImagesDir(), notebookId)
+  if (!fs.existsSync(notebookImagesDir)) return
+  const referenced = collectReferencedImages(nbData)
+  const orphanGracePeriodMs = 5 * 60 * 1000
+  for (const filename of fs.readdirSync(notebookImagesDir)) {
+    const relativePath = `images/${notebookId}/${filename}`
+    const absolutePath = path.join(notebookImagesDir, filename)
+    const stat = fs.statSync(absolutePath)
+    if (
+      !referenced.has(relativePath) &&
+      stat.isFile() &&
+      Date.now() - stat.mtimeMs >= orphanGracePeriodMs
+    ) {
+      fs.unlinkSync(absolutePath)
+    }
+  }
 }
 
 function readConfig() {
@@ -152,15 +362,18 @@ function writeNotebooksMeta(notebooks) {
 function readNotebookData(notebookId) {
   const filePath = getNotebookDataPath(notebookId)
   try {
-    if (!fs.existsSync(filePath)) return { entries: [], snapshots: [], reviewLogs: [] }
+    if (!fs.existsSync(filePath)) {
+      return { entries: [], questionGroups: [], snapshots: [], reviewLogs: [] }
+    }
     const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
     if (!data.entries) data.entries = []
     if (!data.snapshots) data.snapshots = []
     if (!data.reviewLogs) data.reviewLogs = []
+    if (!data.questionGroups) data.questionGroups = []
     return data
   } catch (err) {
     log.error(`读取错题本 ${notebookId} 失败`, err)
-    return { entries: [], snapshots: [], reviewLogs: [] }
+    return { entries: [], questionGroups: [], snapshots: [], reviewLogs: [] }
   }
 }
 
@@ -172,8 +385,10 @@ function writeNotebookData(notebookId, data) {
   try {
     fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
     fs.renameSync(tmpPath, filePath)
+    return true
   } catch (err) {
     log.error(`写入错题本 ${notebookId} 失败`, err)
+    return false
   }
 }
 
@@ -194,6 +409,9 @@ function migrateFromSingleFile() {
     for (const nb of notebooks) {
       const nbData = {
         entries: (oldData.entries || []).filter((e) => e.notebookId === nb.id),
+        questionGroups: (oldData.questionGroups || []).filter(
+          (group) => group.notebookId === nb.id,
+        ),
         snapshots: [],
         reviewLogs: [],
       }
@@ -223,6 +441,56 @@ function migrateFromSingleFile() {
     log.error('数据迁移失败', err)
     return false
   }
+}
+
+function migrateStoredBase64Images() {
+  let migratedEntries = 0
+  for (const notebook of readNotebooksMeta()) {
+    const nbData = readNotebookData(notebook.id)
+    let changed = false
+
+    nbData.entries = (nbData.entries || []).map((entry) => {
+      const migrated = externalizeEntryImages(entry)
+      if (
+        IMAGE_FIELDS.some((field) => migrated[field] !== entry[field]) ||
+        JSON.stringify(migrated.drawings) !== JSON.stringify(entry.drawings) ||
+        migrated.drawing !== entry.drawing
+      ) {
+        changed = true
+        migratedEntries++
+      }
+      return migrated
+    })
+
+    nbData.snapshots = (nbData.snapshots || []).map((snapshot) => {
+      if (!snapshot.data) return snapshot
+      const migratedData = externalizeEntryImages({ ...snapshot.data, notebookId: notebook.id })
+      if (
+        IMAGE_FIELDS.some((field) => migratedData[field] !== snapshot.data[field]) ||
+        JSON.stringify(migratedData.drawings) !== JSON.stringify(snapshot.data.drawings) ||
+        migratedData.drawing !== snapshot.data.drawing
+      ) {
+        changed = true
+      }
+      return { ...snapshot, data: migratedData }
+    })
+
+    nbData.questionGroups = (nbData.questionGroups || []).map((group) => {
+      const migrated = externalizeQuestionGroupImages(group)
+      if (
+        migrated.material !== group.material ||
+        JSON.stringify(migrated.drawings) !== JSON.stringify(group.drawings)
+      ) {
+        changed = true
+      }
+      return migrated
+    })
+
+    if (!changed || writeNotebookData(notebook.id, nbData)) {
+      cleanupNotebookImages(notebook.id, nbData)
+    }
+  }
+  if (migratedEntries > 0) log.info(`Externalized images in ${migratedEntries} stored entries`)
 }
 
 // Register IPC handlers
@@ -263,31 +531,66 @@ ipcMain.handle('storage:get', (_e, notebookId, id) => {
 
 ipcMain.handle('storage:put', (_e, entry) => {
   if (!entry.notebookId) return
-  const nbData = readNotebookData(entry.notebookId)
-  const idx = nbData.entries.findIndex((e) => e.id === entry.id)
+  const storedEntry = externalizeEntryImages(entry)
+  const nbData = readNotebookData(storedEntry.notebookId)
+  const idx = nbData.entries.findIndex((e) => e.id === storedEntry.id)
   if (idx >= 0) {
-    nbData.entries[idx] = entry
+    nbData.entries[idx] = storedEntry
   } else {
-    nbData.entries.push(entry)
+    nbData.entries.push(storedEntry)
   }
-  writeNotebookData(entry.notebookId, nbData)
+  if (writeNotebookData(storedEntry.notebookId, nbData)) {
+    cleanupNotebookImages(storedEntry.notebookId, nbData)
+  }
+  return storedEntry
 })
 
 ipcMain.handle('storage:delete', (_e, notebookId, id) => {
   const nbData = readNotebookData(notebookId)
   nbData.entries = nbData.entries.filter((e) => e.id !== id)
-  writeNotebookData(notebookId, nbData)
+  if (writeNotebookData(notebookId, nbData)) cleanupNotebookImages(notebookId, nbData)
+})
+
+ipcMain.handle('storage:getAllQuestionGroups', (_e, notebookId) => {
+  return readNotebookData(notebookId).questionGroups
+})
+
+ipcMain.handle('storage:getQuestionGroup', (_e, notebookId, groupId) => {
+  const nbData = readNotebookData(notebookId)
+  return nbData.questionGroups.find((group) => group.id === groupId) ?? null
+})
+
+ipcMain.handle('storage:putQuestionGroup', (_e, group) => {
+  if (!group?.notebookId) return
+  const storedGroup = externalizeQuestionGroupImages(group)
+  const nbData = readNotebookData(storedGroup.notebookId)
+  const index = nbData.questionGroups.findIndex((item) => item.id === storedGroup.id)
+  if (index >= 0) nbData.questionGroups[index] = storedGroup
+  else nbData.questionGroups.push(storedGroup)
+  if (writeNotebookData(storedGroup.notebookId, nbData)) {
+    cleanupNotebookImages(storedGroup.notebookId, nbData)
+  }
+})
+
+ipcMain.handle('storage:deleteQuestionGroup', (_e, notebookId, groupId) => {
+  const nbData = readNotebookData(notebookId)
+  nbData.questionGroups = nbData.questionGroups.filter((group) => group.id !== groupId)
+  if (writeNotebookData(notebookId, nbData)) cleanupNotebookImages(notebookId, nbData)
 })
 
 ipcMain.handle('storage:putSnapshot', (_e, notebookId, snapshot) => {
   const nbData = readNotebookData(notebookId)
-  const idx = nbData.snapshots.findIndex((s) => s.entryId === snapshot.entryId)
-  if (idx >= 0) {
-    nbData.snapshots[idx] = snapshot
-  } else {
-    nbData.snapshots.push(snapshot)
+  const storedSnapshot = {
+    ...snapshot,
+    data: externalizeEntryImages({ ...snapshot.data, notebookId }),
   }
-  writeNotebookData(notebookId, nbData)
+  const idx = nbData.snapshots.findIndex((s) => s.entryId === storedSnapshot.entryId)
+  if (idx >= 0) {
+    nbData.snapshots[idx] = storedSnapshot
+  } else {
+    nbData.snapshots.push(storedSnapshot)
+  }
+  if (writeNotebookData(notebookId, nbData)) cleanupNotebookImages(notebookId, nbData)
 })
 
 ipcMain.handle('storage:getSnapshot', (_e, notebookId, entryId) => {
@@ -302,13 +605,17 @@ ipcMain.handle('storage:getAllSnapshots', (_e, notebookId) => {
 ipcMain.handle('storage:deleteSnapshot', (_e, notebookId, entryId) => {
   const nbData = readNotebookData(notebookId)
   nbData.snapshots = nbData.snapshots.filter((s) => s.entryId !== entryId)
-  writeNotebookData(notebookId, nbData)
+  if (writeNotebookData(notebookId, nbData)) cleanupNotebookImages(notebookId, nbData)
 })
 
 ipcMain.handle('storage:deleteAllSnapshots', (_e, notebookId) => {
   const nbData = readNotebookData(notebookId)
   nbData.snapshots = []
-  writeNotebookData(notebookId, nbData)
+  if (writeNotebookData(notebookId, nbData)) cleanupNotebookImages(notebookId, nbData)
+})
+
+ipcMain.handle('images:save', (_event, notebookId, bytes, mimeType) => {
+  return saveImageBytes(notebookId, bytes, mimeType)
 })
 
 // ── Review log handlers ──────────────────────────────────────────
@@ -364,6 +671,13 @@ ipcMain.handle('storage:deleteNotebook', (_e, id) => {
   } catch (err) {
     log.warn(`删除错题本插件数据失败: ${id}`, err)
   }
+
+  const notebookImagesDir = path.join(getImagesDir(), id)
+  try {
+    if (fs.existsSync(notebookImagesDir)) fs.rmSync(notebookImagesDir, { recursive: true })
+  } catch (err) {
+    log.warn(`Failed to delete notebook images: ${id}`, err)
+  }
 })
 
 ipcMain.handle('storage:getDataDir', () => getDataDir())
@@ -392,6 +706,11 @@ ipcMain.handle('storage:setDataDir', async () => {
         fs.copyFileSync(path.join(oldDir, f), path.join(newDir, f))
       }
     }
+
+    const oldImagesDir = path.join(oldDir, 'images')
+    if (fs.existsSync(oldImagesDir)) {
+      fs.cpSync(oldImagesDir, path.join(newDir, 'images'), { recursive: true })
+    }
   } catch (err) {
     log.warn('复制数据文件到新目录失败', err)
   }
@@ -416,30 +735,142 @@ ipcMain.handle('storage:importAll', (_e, notebookId, entries) => {
   const existingIds = new Set(nbData.entries.map((e) => e.id))
   for (const entry of entries) {
     if (!existingIds.has(entry.id)) {
-      nbData.entries.push(entry)
+      nbData.entries.push(externalizeEntryImages({ ...entry, notebookId }))
       existingIds.add(entry.id)
     }
   }
-  writeNotebookData(notebookId, nbData)
+  if (writeNotebookData(notebookId, nbData)) cleanupNotebookImages(notebookId, nbData)
 })
 
 // ── Archive export (.ctb) ────────────────────────────────────────────
 
-const IMG_RE = /<img[^>]+src="data:image\/(png|jpeg|jpg|gif|webp);base64,([^"]+)"/gi
+function copyReferencedImagesForExport(entry, archiveImagesDir, fields = IMAGE_FIELDS) {
+  const copied = new Set()
+  const copyImage = (source) => {
+    const relativePath = normalizeRelativeImagePath(source)
+    if (!relativePath) return source
+    if (copied.has(relativePath)) return relativePath
+    const sourcePath = imageAbsolutePath(relativePath)
+    if (!fs.existsSync(sourcePath)) return relativePath
+    const archiveRelativePath = relativePath.slice('images/'.length)
+    const destinationPath = path.join(archiveImagesDir, ...archiveRelativePath.split('/'))
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true })
+    fs.copyFileSync(sourcePath, destinationPath)
+    copied.add(relativePath)
+    return relativePath
+  }
 
-function extractImages(html) {
-  const images = []
-  let index = 0
+  for (const field of fields) {
+    const html = normalizeImageUrls(entry[field] || '')
+    entry[field] = html
+    const sourcePattern = /<img\b[^>]*?\bsrc=["']([^"']+)["']/gi
+    let match
+    while ((match = sourcePattern.exec(html))) {
+      const relativePath = normalizeRelativeImagePath(match[1])
+      if (relativePath) copyImage(relativePath)
+    }
+  }
+  if (entry.drawings && typeof entry.drawings === 'object') {
+    entry.drawings = Object.fromEntries(
+      Object.entries(entry.drawings).map(([field, source]) => [field, copyImage(source)]),
+    )
+  }
+  if (typeof entry.drawing === 'string') entry.drawing = copyImage(entry.drawing)
+}
 
-  const replaced = html.replace(IMG_RE, (_match, ext, b64) => {
-    const mimeExt = ext === 'jpeg' ? 'jpg' : ext
-    const filename = `img_${index}_${Date.now().toString(36)}.${mimeExt}`
-    images.push({ filename, data: Buffer.from(b64, 'base64') })
-    index++
-    return _match.replace(/src="data:image\/[^"]+"/i, `src="images/${filename}"`)
-  })
+function mimeTypeFromFilename(filename) {
+  const extension = path.extname(filename).slice(1).toLowerCase()
+  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg'
+  if (extension === 'png') return 'image/png'
+  if (extension === 'gif') return 'image/gif'
+  if (extension === 'webp') return 'image/webp'
+  if (extension === 'bmp') return 'image/bmp'
+  return null
+}
 
-  return { html: replaced, images }
+function importArchiveImages(importData, extractedImagesDir) {
+  if (!fs.existsSync(extractedImagesDir)) return
+  const extractedRoot = path.resolve(extractedImagesDir)
+  const importedPaths = new Map()
+
+  const importImage = (source, notebookId) => {
+    const relativePath = normalizeRelativeImagePath(source)
+    if (!relativePath) return source
+    let archiveSource = path.resolve(
+      extractedRoot,
+      ...relativePath.slice('images/'.length).split('/'),
+    )
+    if (!archiveSource.startsWith(extractedRoot + path.sep)) return source
+    if (!fs.existsSync(archiveSource)) {
+      archiveSource = path.resolve(extractedRoot, path.basename(relativePath))
+    }
+    if (!archiveSource.startsWith(extractedRoot + path.sep) || !fs.existsSync(archiveSource)) {
+      return source
+    }
+
+    const cacheKey = `${notebookId}:${archiveSource}`
+    let storedPath = importedPaths.get(cacheKey)
+    if (!storedPath) {
+      const mimeType = mimeTypeFromFilename(archiveSource)
+      if (!mimeType) return source
+      storedPath = saveImageBytes(notebookId, fs.readFileSync(archiveSource), mimeType)
+      importedPaths.set(cacheKey, storedPath)
+    }
+    return storedPath
+  }
+
+  for (const entry of importData.entries || []) {
+    if (!entry.notebookId) continue
+    for (const field of IMAGE_FIELDS) {
+      if (typeof entry[field] !== 'string') continue
+      entry[field] = normalizeImageUrls(entry[field]).replace(
+        /(<img\b[^>]*?\bsrc=["'])(images\/[^"']+)(["'][^>]*>)/gi,
+        (match, prefix, relativePath, suffix) => {
+          const storedPath = importImage(relativePath, entry.notebookId)
+          if (storedPath === relativePath) return match
+          return `${prefix}${storedPath}${suffix}`
+        },
+      )
+    }
+    if (entry.drawings && typeof entry.drawings === 'object') {
+      entry.drawings = Object.fromEntries(
+        Object.entries(entry.drawings).map(([field, source]) => [
+          field,
+          importImage(source, entry.notebookId),
+        ]),
+      )
+    }
+    if (typeof entry.drawing === 'string') {
+      entry.drawing = importImage(entry.drawing, entry.notebookId)
+    }
+  }
+  for (const group of importData.questionGroups || []) {
+    if (!group.notebookId || typeof group.material !== 'string') continue
+    group.material = normalizeImageUrls(group.material).replace(
+      /(<img\b[^>]*?\bsrc=["'])(images\/[^"']+)(["'][^>]*>)/gi,
+      (match, prefix, relativePath, suffix) => {
+        const storedPath = importImage(relativePath, group.notebookId)
+        return storedPath === relativePath ? match : `${prefix}${storedPath}${suffix}`
+      },
+    )
+    if (group.drawings && typeof group.drawings === 'object') {
+      group.drawings = Object.fromEntries(
+        Object.entries(group.drawings).map(([field, source]) => [
+          field,
+          importImage(source, group.notebookId),
+        ]),
+      )
+    }
+  }
+}
+
+function countFilesRecursively(directory) {
+  if (!fs.existsSync(directory)) return 0
+  let count = 0
+  for (const item of fs.readdirSync(directory, { withFileTypes: true })) {
+    count += item.isDirectory() ? countFilesRecursively(path.join(directory, item.name)) : 1
+  }
+  return count
 }
 
 function safeExtractZip(zip, destDir) {
@@ -469,19 +900,6 @@ function safeExtractZip(zip, destDir) {
     // Write file
     fs.writeFileSync(resolved, entry.getData())
   }
-}
-
-function restoreImages(html, imagesDir) {
-  return html.replace(/<img[^>]+src="images\/([^"]+)"[^>]*>/gi, (match, filename) => {
-    const safeFilename = path.basename(filename)
-    const imgPath = path.join(imagesDir, safeFilename)
-    if (!fs.existsSync(imgPath)) return match
-    const buf = fs.readFileSync(imgPath)
-    const ext = path.extname(safeFilename).slice(1).toLowerCase()
-    const mime = ext === 'jpg' ? 'jpeg' : ext
-    const b64 = buf.toString('base64')
-    return match.replace(/src="images\/[^"]+"/i, `src="data:image/${mime};base64,${b64}"`)
-  })
 }
 
 // ── Merge helpers ─────────────────────────────────────────────────────
@@ -539,6 +957,19 @@ function mergeImportedData(importData, keepReviewState) {
     writeNotebookData(nbId, nbData)
   }
 
+  const groupsByNotebook = new Map()
+  for (const group of importData.questionGroups || []) {
+    if (!group.notebookId) continue
+    if (!groupsByNotebook.has(group.notebookId)) groupsByNotebook.set(group.notebookId, [])
+    groupsByNotebook.get(group.notebookId).push(group)
+  }
+  for (const [nbId, groups] of groupsByNotebook) {
+    const nbData = readNotebookData(nbId)
+    const { mergedArray } = mergeArrayWithMap(nbData.questionGroups || [], groups)
+    nbData.questionGroups = mergedArray
+    writeNotebookData(nbId, nbData)
+  }
+
   // Merge review logs only when keeping review state
   let importedLogs = 0
   if (keepReviewState) {
@@ -568,10 +999,12 @@ ipcMain.handle('storage:exportArchive', async () => {
   const notebooks = readNotebooksMeta()
   const allEntries = []
   const allReviewLogs = []
+  const allQuestionGroups = []
   for (const nb of notebooks) {
     const nbData = readNotebookData(nb.id)
     allEntries.push(...nbData.entries)
     allReviewLogs.push(...(nbData.reviewLogs || []))
+    allQuestionGroups.push(...(nbData.questionGroups || []))
   }
 
   if (allEntries.length === 0) {
@@ -604,18 +1037,15 @@ ipcMain.handle('storage:exportArchive', async () => {
         notebooks,
         entries: allEntries,
         reviewLogs: allReviewLogs,
+        questionGroups: allQuestionGroups,
       }),
     )
 
     for (const entry of exportData.entries) {
-      for (const field of ['question', 'wrongAnswer', 'correctAnswer']) {
-        const html = entry[field] || ''
-        const { html: replaced, images } = extractImages(html)
-        entry[field] = replaced
-        for (const img of images) {
-          fs.writeFileSync(path.join(imagesDir, img.filename), img.data)
-        }
-      }
+      copyReferencedImagesForExport(entry, imagesDir)
+    }
+    for (const group of exportData.questionGroups) {
+      copyReferencedImagesForExport(group, imagesDir, ['material'])
     }
 
     const dataJsonPath = path.join(tmpDir, 'data.json')
@@ -627,7 +1057,7 @@ ipcMain.handle('storage:exportArchive', async () => {
     zip.writeZip(result.filePath)
 
     const entryCount = exportData.entries.length
-    const imageCount = fs.readdirSync(imagesDir).length
+    const imageCount = countFilesRecursively(imagesDir)
     log.info(`导出归档: ${result.filePath} (${entryCount} 条错题, ${imageCount} 张图片)`)
 
     return { success: true, message: `已导出 ${entryCount} 条错题`, count: entryCount }
@@ -678,21 +1108,13 @@ ipcMain.handle('storage:importArchive', async (_e, keepReviewState) => {
       return { success: false, message: '导入失败：数据格式不正确' }
     }
 
-    // Restore base64 images from images/ folder
+    // Copy archived image files into the data directory and keep relative links in HTML.
     const imagesDir = path.join(tmpDir, 'images')
-    if (fs.existsSync(imagesDir)) {
-      for (const entry of importData.entries) {
-        for (const field of ['question', 'wrongAnswer', 'correctAnswer']) {
-          if (
-            entry[field] &&
-            typeof entry[field] === 'string' &&
-            entry[field].includes('images/')
-          ) {
-            entry[field] = restoreImages(entry[field], imagesDir)
-          }
-        }
-      }
-    }
+    importArchiveImages(importData, imagesDir)
+    importData.entries = importData.entries.map((entry) => externalizeEntryImages(entry))
+    importData.questionGroups = (importData.questionGroups || []).map((group) =>
+      externalizeQuestionGroupImages(group),
+    )
 
     // Merge into per-notebook files
     const { importedCount, importedLogs } = mergeImportedData(importData, keepReviewState)
@@ -805,6 +1227,7 @@ function createWindow() {
   // Run one-time migration from old single-file format
   try {
     migrateFromSingleFile()
+    migrateStoredBase64Images()
   } catch (err) {
     log.error('迁移检查失败', err)
   }
@@ -837,7 +1260,23 @@ function createWindow() {
   })
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  protocol.handle(IMAGE_SCHEME, (request) => {
+    try {
+      const requestUrl = new URL(request.url)
+      const relativePath = decodeURIComponent(requestUrl.pathname).replace(/^\/+/, '')
+      const absolutePath = imageAbsolutePath(relativePath)
+      if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
+        return new Response('Image not found', { status: 404 })
+      }
+      return net.fetch(pathToFileURL(absolutePath).toString())
+    } catch (err) {
+      log.warn('Rejected image request', err)
+      return new Response('Invalid image path', { status: 400 })
+    }
+  })
+  createWindow()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

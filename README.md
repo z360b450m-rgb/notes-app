@@ -132,10 +132,8 @@ notes-app/
 ```bash
 # 启动开发服务器后运行
 npx vite &
-python test_notebooks.py
-python test_ebb.py
-python test_save.py
-python test_unreviewed.py
+python -m pip install -r requirements-e2e.txt
+npm run test:e2e
 ```
 
 ## 许可证

@@ -4,12 +4,16 @@
 import { ref, watch, nextTick, computed, inject, type Ref } from 'vue'
 import CameraCapture from './CameraCapture.vue'
 import ScreenshotPicker from './ScreenshotPicker.vue'
+import RichTextSizeControls from './RichTextSizeControls.vue'
+import { saveImage, toDisplayHtml, toStorageHtml } from '@/services/imageStorage'
+import { useRichTextSizing } from '@/composables/useRichTextSizing'
 
 const props = defineProps<{
   type: 'wrong' | 'correct'
   hidden: boolean
   modelValue: string
   entryId: string
+  notebookId: string
 }>()
 
 const emit = defineEmits<{
@@ -27,6 +31,16 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const camOpen = ref(false)
 const screenshotOpen = ref(false)
 const wrapperRef = ref<HTMLDivElement | null>(null)
+
+const {
+  hasSelectedImage,
+  captureSelection,
+  handleEditorClick,
+  applyFontSize,
+  applyImageWidth,
+  serializeHtml,
+  resetSizingState,
+} = useRichTextSizing(() => bodyRef.value, onInput)
 
 const isWrong = props.type === 'wrong'
 const label = isWrong ? '错误答案' : '正确答案'
@@ -55,7 +69,7 @@ function syncContent() {
   nextTick(() => {
     if (bodyRef.value) {
       suppressInput = true
-      bodyRef.value.innerHTML = props.modelValue
+      bodyRef.value.innerHTML = toDisplayHtml(props.modelValue)
       suppressInput = false
     }
   })
@@ -64,6 +78,7 @@ function syncContent() {
 watch(
   () => props.entryId,
   () => {
+    resetSizingState()
     syncContent()
     nextTick(() => {
       if (canvasContainerRef.value && props.entryId) {
@@ -98,17 +113,24 @@ watch(showHidden, (hidden) => {
 function onInput() {
   if (suppressInput) return
   if (bodyRef.value) {
-    emit('update:modelValue', bodyRef.value.innerHTML)
+    emit('update:modelValue', toStorageHtml(serializeHtml()))
   }
 }
 
-function insertImageAtCursor(src: string) {
+async function insertImageAtCursor(source: Blob | string) {
   const el = bodyRef.value
   if (!el) return
+  let displayUrl: string
+  try {
+    displayUrl = (await saveImage(props.notebookId, source)).displayUrl
+  } catch (error) {
+    console.error('Failed to save image', error)
+    return
+  }
   el.focus()
 
   const img = document.createElement('img')
-  img.src = src
+  img.src = displayUrl
   img.style.maxWidth = '100%'
   img.style.borderRadius = '6px'
 
@@ -140,11 +162,7 @@ function onPaste(e: ClipboardEvent) {
       e.preventDefault()
       const blob = item.getAsFile()
       if (!blob) continue
-      const reader = new FileReader()
-      reader.onload = () => {
-        insertImageAtCursor(reader.result as string)
-      }
-      reader.readAsDataURL(blob)
+      void insertImageAtCursor(blob)
       break
     }
   }
@@ -162,11 +180,7 @@ function onDrop(e: DragEvent) {
   e.preventDefault()
   for (const file of files) {
     if (file.type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onload = () => {
-        insertImageAtCursor(reader.result as string)
-      }
-      reader.readAsDataURL(file)
+      void insertImageAtCursor(file)
       break
     }
   }
@@ -189,22 +203,18 @@ function openFilePicker() {
 function onFileChange() {
   const file = fileInput.value?.files?.[0]
   if (!file) return
-  const reader = new FileReader()
-  reader.onload = () => {
-    insertImageAtCursor(reader.result as string)
-  }
-  reader.readAsDataURL(file)
+  void insertImageAtCursor(file)
   fileInput.value!.value = ''
 }
 
 function onCameraCapture(dataUrl: string) {
   camOpen.value = false
-  insertImageAtCursor(dataUrl)
+  void insertImageAtCursor(dataUrl)
 }
 
 function onScreenshotCapture(dataUrl: string) {
   screenshotOpen.value = false
-  insertImageAtCursor(dataUrl)
+  void insertImageAtCursor(dataUrl)
 }
 </script>
 
@@ -223,6 +233,13 @@ function onScreenshotCapture(dataUrl: string) {
 
       <!-- Image tools (top-right) -->
       <div v-if="!showHidden" class="ml-auto flex items-center gap-0.5">
+        <RichTextSizeControls
+          :image-selected="hasSelectedImage"
+          @preserve-selection="captureSelection"
+          @font-size="applyFontSize"
+          @image-width="applyImageWidth"
+        />
+        <span class="mx-0.5 h-4 w-px bg-gray-200 dark:bg-[#3a3a37]" />
         <button
           class="w-6 h-6 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5 transition-all active:scale-90"
           title="截屏"
@@ -298,6 +315,9 @@ function onScreenshotCapture(dataUrl: string) {
           @paste="onPaste"
           @dragover="onDragOver"
           @drop="onDrop"
+          @click="handleEditorClick"
+          @mouseup="captureSelection"
+          @keyup="captureSelection"
           @blur="emit('blur')"
         />
       </div>

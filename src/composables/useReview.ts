@@ -1,6 +1,6 @@
 import { ref, computed, watch, onUnmounted, type Ref, type ComputedRef } from 'vue'
 import type { NoteEntry } from '@/types'
-import { db } from '@/services/db'
+import { entryRepository } from '@/services/db'
 import { useReviewLogs } from '@/composables/useReviewLogs'
 import { useReviewSettings } from '@/composables/useReviewSettings'
 
@@ -152,8 +152,8 @@ interface ReviewSessionContext extends ReviewOutcome {
 // ===================================================================
 export function useReview(
   entries: Ref<NoteEntry[]>,
+  getNotebookId: () => string,
   showToast?: (msg: string) => void,
-  getNotebookId?: () => string,
 ): ReviewState {
   const mode = ref<'edit' | 'review'>('edit')
   const reviewIndex = ref(0)
@@ -165,7 +165,7 @@ export function useReview(
   let timerInterval: ReturnType<typeof setInterval> | null = null
   let clockInterval: ReturnType<typeof setInterval> | null = null
 
-  const { addLog, loadLogs } = useReviewLogs(getNotebookId || (() => ''))
+  const { addLog, loadLogs } = useReviewLogs(getNotebookId)
   loadLogs()
 
   const { settings } = useReviewSettings()
@@ -199,7 +199,9 @@ export function useReview(
           entry.nextReviewDate = entry.lastReviewDate + interval * 86400000
 
           // 使用 JSON.parse(JSON.stringify) 去除 Vue 的 Proxy 响应式包装，防止 IndexedDB 报 CloneError
-          updatePromises.push(db.put(JSON.parse(JSON.stringify(entry))))
+          updatePromises.push(
+            entryRepository.put(entry.notebookId, JSON.parse(JSON.stringify(entry))),
+          )
         }
       }
 
@@ -350,7 +352,7 @@ export function useReview(
     try {
       // 2. 核心修复：首先尝试将更新后的副本写入数据库
       // 此时如果写入失败，会直接进入 catch 块，不会影响到界面和真实的 Vue 状态
-      await db.put(JSON.parse(JSON.stringify(entryClone)))
+      await entryRepository.put(entryClone.notebookId, JSON.parse(JSON.stringify(entryClone)))
       const sessionContext: ReviewSessionContext = {
         ...outcome,
         sessionId: activeSessionId.value,

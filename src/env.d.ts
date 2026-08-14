@@ -20,6 +20,10 @@ interface Window {
     get: (notebookId: string, id: string) => Promise<any | null>
     put: (entry: any) => Promise<void>
     delete: (notebookId: string, id: string) => Promise<void>
+    getAllQuestionGroups: (notebookId: string) => Promise<any[]>
+    getQuestionGroup: (notebookId: string, groupId: string) => Promise<any | null>
+    putQuestionGroup: (group: any) => Promise<void>
+    deleteQuestionGroup: (notebookId: string, groupId: string) => Promise<void>
     putSnapshot: (notebookId: string, snapshot: any) => Promise<void>
     getSnapshot: (notebookId: string, entryId: string) => Promise<any | null>
     getAllSnapshots: (notebookId: string) => Promise<any[]>
@@ -27,6 +31,7 @@ interface Window {
     deleteAllSnapshots: (notebookId: string) => Promise<void>
     getDataDir: () => Promise<string>
     setDataDir: () => Promise<string>
+    saveImage: (notebookId: string, bytes: Uint8Array, mimeType: string) => Promise<string>
     exportAll: () => Promise<string>
     importAll: (notebookId: string, entries: any[]) => Promise<void>
     exportArchive: () => Promise<{ success: boolean; message: string; count?: number }>
@@ -40,6 +45,8 @@ interface Window {
     putNotebook: (notebook: any) => Promise<void>
     deleteNotebook: (id: string) => Promise<void>
     getDesktopSources: () => Promise<DesktopSource[]>
+    isIndexedDBMigrated: () => Promise<boolean>
+    markIndexedDBMigrated: () => Promise<void>
     isNotebookPluginInstalled?: (notebookId: string, pluginId: string) => Promise<boolean>
     listNotebookPlugins?: (notebookId: string) => Promise<NotebookPluginInstallation[]>
     installNotebookPlugin?: (notebookId: string, pluginId: string) => Promise<void>
@@ -65,10 +72,7 @@ interface Window {
       notebookId: string,
       archiveId: string,
     ) => Promise<VocabularyArchive | null>
-    createVocabularyArchive?: (
-      notebookId: string,
-      name: string,
-    ) => Promise<VocabularyArchive>
+    createVocabularyArchive?: (notebookId: string, name: string) => Promise<VocabularyArchive>
     saveVocabularyArchive?: (
       notebookId: string,
       archiveId: string,

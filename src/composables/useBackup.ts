@@ -1,5 +1,5 @@
-import type { NoteEntry } from '@/types'
-import { db } from '@/services/db'
+import type { NoteEntry, QuestionGroup } from '@/types'
+import { entryRepository, questionGroupRepository } from '@/services/db'
 import { ref } from 'vue'
 import JSZip from 'jszip'
 
@@ -62,6 +62,7 @@ function downloadBlob(blob: Blob, filename: string) {
 // ===================================================================
 export function useBackup(
   getEntries: () => NoteEntry[],
+  getQuestionGroups: () => QuestionGroup[],
   getNotebookId: () => string,
   reload: () => Promise<void>,
   onToast: (msg: string) => void,
@@ -96,6 +97,7 @@ export function useBackup(
 
       // Deep-clone and extract images
       const exportEntries = JSON.parse(JSON.stringify(entries)) as NoteEntry[]
+      const exportGroups = JSON.parse(JSON.stringify(getQuestionGroups())) as QuestionGroup[]
       for (const entry of exportEntries) {
         for (const field of ['question', 'wrongAnswer', 'correctAnswer'] as const) {
           const html = (entry as Record<string, string>)[field] || ''
@@ -107,7 +109,16 @@ export function useBackup(
         }
       }
 
-      zip.file('data.json', JSON.stringify(exportEntries, null, 2))
+      for (const group of exportGroups) {
+        const { html, images } = extractImages(group.material || '')
+        group.material = html
+        for (const img of images) imagesDir.file(img.filename, img.data, { base64: true })
+      }
+
+      zip.file(
+        'data.json',
+        JSON.stringify({ entries: exportEntries, questionGroups: exportGroups }, null, 2),
+      )
 
       const blob = await zip.generateAsync({ type: 'blob' })
       downloadBlob(blob, `错题本_${timestamp()}.ctb`)
@@ -135,6 +146,12 @@ export function useBackup(
       return
     }
 
+    const targetNotebookId = getNotebookId()
+    if (!targetNotebookId) {
+      onToast('Please select a notebook before importing.')
+      return
+    }
+
     // Browser: file picker + JSZip
     const input = document.createElement('input')
     input.type = 'file'
@@ -155,8 +172,10 @@ export function useBackup(
 
         const text = await dataJson.async('string')
         const data = JSON.parse(text)
+        const importEntries = Array.isArray(data) ? data : data.entries
+        const importGroups = Array.isArray(data) ? [] : data.questionGroups || []
 
-        if (!Array.isArray(data)) {
+        if (!Array.isArray(importEntries)) {
           onToast('导入失败：数据格式不正确')
           return
         }
@@ -178,7 +197,21 @@ export function useBackup(
         let imported = 0
         let skipped = 0
 
-        for (const item of data) {
+        for (const group of importGroups) {
+          if (!group.id || typeof group.material !== 'string') continue
+          group.material = restoreImages(group.material, imageMap)
+          const sanitizedGroup: QuestionGroup = {
+            ...group,
+            notebookId: targetNotebookId,
+            title: group.title || '一拖 N 题组',
+            material: group.material,
+            createdAt: group.createdAt || Date.now(),
+            updatedAt: Date.now(),
+          }
+          await questionGroupRepository.put(targetNotebookId, sanitizedGroup)
+        }
+
+        for (const item of importEntries) {
           if (!item.id || item.question === undefined) {
             skipped++
             continue
@@ -194,7 +227,7 @@ export function useBackup(
           const sanitized: NoteEntry = {
             ...item,
             id: item.id,
-            notebookId: getNotebookId() || item.notebookId || '',
+            notebookId: targetNotebookId,
             tags: Array.isArray(item.tags) ? item.tags : [],
             subject: item.subject || '',
             source: item.source || '',
@@ -207,7 +240,7 @@ export function useBackup(
             createdAt: item.createdAt || Date.now(),
             updatedAt: Date.now(),
           }
-          await db.put(sanitized)
+          await entryRepository.put(targetNotebookId, sanitized)
           imported++
         }
 

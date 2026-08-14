@@ -1,8 +1,7 @@
 import { ref, computed, onUnmounted } from 'vue'
-import type { NoteEntry } from '@/types'
-import { db } from '@/services/db'
+import type { NoteEntry, QuestionGroup } from '@/types'
+import { entryRepository, questionGroupRepository } from '@/services/db'
 import { useReviewSettings } from '@/composables/useReviewSettings'
-import { useNotebooks } from '@/composables/useNotebooks'
 import { useRagSync } from '@/composables/useRagSync'
 import { useAiFeatures } from '@/composables/useAiFeatures'
 
@@ -16,6 +15,10 @@ function toPlain<T>(obj: T): T {
 
 function genId(): string {
   return 'cuoti_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)
+}
+
+function genGroupId(): string {
+  return 'group_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)
 }
 
 function stripMd(s: string): string {
@@ -55,21 +58,35 @@ function nextPlaceholderTitle(entries: NoteEntry[]): string {
 // 均在此实现，Vue 组件通过调用本 Hook 的返回值来驱动视图。
 // 返回值类型签名必须向后兼容 —— 只能追加, 不可删除或重命名字段。
 // ===================================================================
-export function useEntries() {
+export function useEntries(getNotebookId: () => string) {
   const entries = ref<NoteEntry[]>([])
+  const questionGroups = ref<QuestionGroup[]>([])
   const activeId = ref<string | null>(null)
   const answersHidden = ref(false)
   const toastMsg = ref('')
   const showDeleteModal = ref(false)
   const isDirty = ref(false)
   const { settings } = useReviewSettings()
-  const { activeId: notebookId } = useNotebooks()
+  const notebookId = computed(getNotebookId)
 
   const notebookEntries = computed(() => entries.value)
 
   const activeEntry = computed<NoteEntry | undefined>(() =>
     entries.value.find((e) => e.id === activeId.value),
   )
+
+  const activeGroup = computed<QuestionGroup | undefined>(() => {
+    const groupId = activeEntry.value?.groupId
+    return groupId ? questionGroups.value.find((group) => group.id === groupId) : undefined
+  })
+
+  const activeGroupEntries = computed<NoteEntry[]>(() => {
+    const groupId = activeEntry.value?.groupId
+    if (!groupId) return activeEntry.value ? [activeEntry.value] : []
+    return entries.value
+      .filter((entry) => entry.groupId === groupId)
+      .sort((a, b) => (a.subQuestionOrder ?? 0) - (b.subQuestionOrder ?? 0))
+  })
 
   // Batch selection
   const selectedIds = ref<Set<string>>(new Set())
@@ -113,12 +130,33 @@ export function useEntries() {
 
   // Batch delete
   async function batchDelete(ids: string[]) {
+    const affectedGroupIds = new Set(
+      entries.value
+        .filter((entry) => ids.includes(entry.id) && entry.groupId)
+        .map((entry) => entry.groupId!),
+    )
     for (const id of ids) {
-      await db.delete(notebookId.value, id)
-      await db.deleteSnapshot(notebookId.value, id)
+      await entryRepository.delete(notebookId.value, id)
+      await entryRepository.deleteSnapshot(notebookId.value, id)
     }
     const idSet = new Set(ids)
     entries.value = entries.value.filter((e) => !idSet.has(e.id))
+    for (const groupId of affectedGroupIds) {
+      const remaining = entries.value
+        .filter((entry) => entry.groupId === groupId)
+        .sort((a, b) => (a.subQuestionOrder ?? 0) - (b.subQuestionOrder ?? 0))
+      if (remaining.length === 0) {
+        await questionGroupRepository.delete(notebookId.value, groupId)
+        questionGroups.value = questionGroups.value.filter((group) => group.id !== groupId)
+      } else {
+        await Promise.all(
+          remaining.map((entry, index) => {
+            entry.subQuestionOrder = index
+            return entryRepository.put(entry.notebookId, toPlain(entry))
+          }),
+        )
+      }
+    }
     if (activeId.value && idSet.has(activeId.value)) {
       activeId.value = null
       isDirty.value = false
@@ -136,7 +174,7 @@ export function useEntries() {
         for (const t of tags) existing.add(t)
         entry.tags = Array.from(existing)
         entry.updatedAt = now
-        await db.put(toPlain(entry))
+        await entryRepository.put(entry.notebookId, toPlain(entry))
       }
     }
     deselectAll()
@@ -148,7 +186,9 @@ export function useEntries() {
     const targets = entries.value.filter((e) => e.subject === oldName)
     if (targets.length === 0) return
     await Promise.all(
-      targets.map((e) => db.put(toPlain({ ...e, subject: newName, updatedAt: now }))),
+      targets.map((e) =>
+        entryRepository.put(e.notebookId, toPlain({ ...e, subject: newName, updatedAt: now })),
+      ),
     )
     for (const e of targets) {
       e.subject = newName
@@ -164,7 +204,7 @@ export function useEntries() {
     await Promise.all(
       targets.map((e) => {
         const newTags = e.tags.map((t) => (t === oldName ? newName : t))
-        return db.put(toPlain({ ...e, tags: newTags, updatedAt: now }))
+        return entryRepository.put(e.notebookId, toPlain({ ...e, tags: newTags, updatedAt: now }))
       }),
     )
     for (const e of targets) {
@@ -179,7 +219,9 @@ export function useEntries() {
     const targets = entries.value.filter((e) => e.source === oldName)
     if (targets.length === 0) return
     await Promise.all(
-      targets.map((e) => db.put(toPlain({ ...e, source: newName, updatedAt: now }))),
+      targets.map((e) =>
+        entryRepository.put(e.notebookId, toPlain({ ...e, source: newName, updatedAt: now })),
+      ),
     )
     for (const e of targets) {
       e.source = newName
@@ -192,7 +234,11 @@ export function useEntries() {
     const now = Date.now()
     const targets = entries.value.filter((e) => e.subject === name)
     if (targets.length === 0) return
-    await Promise.all(targets.map((e) => db.put(toPlain({ ...e, subject: '', updatedAt: now }))))
+    await Promise.all(
+      targets.map((e) =>
+        entryRepository.put(e.notebookId, toPlain({ ...e, subject: '', updatedAt: now })),
+      ),
+    )
     for (const e of targets) {
       e.subject = ''
       e.updatedAt = now
@@ -207,7 +253,7 @@ export function useEntries() {
     await Promise.all(
       targets.map((e) => {
         const newTags = e.tags.filter((t) => t !== name)
-        return db.put(toPlain({ ...e, tags: newTags, updatedAt: now }))
+        return entryRepository.put(e.notebookId, toPlain({ ...e, tags: newTags, updatedAt: now }))
       }),
     )
     for (const e of targets) {
@@ -221,7 +267,11 @@ export function useEntries() {
     const now = Date.now()
     const targets = entries.value.filter((e) => e.source === name)
     if (targets.length === 0) return
-    await Promise.all(targets.map((e) => db.put(toPlain({ ...e, source: '', updatedAt: now }))))
+    await Promise.all(
+      targets.map((e) =>
+        entryRepository.put(e.notebookId, toPlain({ ...e, source: '', updatedAt: now })),
+      ),
+    )
     for (const e of targets) {
       e.source = ''
       e.updatedAt = now
@@ -254,7 +304,14 @@ export function useEntries() {
     snapshotTimer = setInterval(() => {
       if (isDirty.value && activeId.value) {
         const entry = entries.value.find((e) => e.id === activeId.value)
-        if (entry) db.putSnapshot(notebookId.value, activeId.value, toPlain(entry))
+        if (entry && notebookId.value) {
+          void entryRepository.putSnapshot(notebookId.value, activeId.value, toPlain(entry))
+          const group = activeGroup.value
+          if (group) {
+            group.updatedAt = Date.now()
+            void questionGroupRepository.put(notebookId.value, toPlain(group))
+          }
+        }
       }
     }, 1000)
   }
@@ -267,10 +324,19 @@ export function useEntries() {
 
   async function loadEntries() {
     const seq = ++loadSeq
+    if (!notebookId.value) {
+      entries.value = []
+      questionGroups.value = []
+      return
+    }
     try {
-      const result = await db.getAll(notebookId.value)
+      const [result, groups] = await Promise.all([
+        entryRepository.getAll(notebookId.value),
+        questionGroupRepository.getAll(notebookId.value),
+      ])
       if (seq === loadSeq) {
         entries.value = result
+        questionGroups.value = groups
       }
     } catch {
       if (seq === loadSeq && entries.value.length === 0) {
@@ -280,8 +346,9 @@ export function useEntries() {
   }
 
   async function checkCrashRecovery(): Promise<NoteEntry[]> {
+    if (!notebookId.value) return []
     try {
-      const snaps = await db.getAllSnapshots(notebookId.value)
+      const snaps = await entryRepository.getAllSnapshots(notebookId.value)
       if (snaps.length === 0) return []
       const recovered: NoteEntry[] = []
       for (const snap of snaps) {
@@ -289,15 +356,15 @@ export function useEntries() {
         if (existing) {
           // Restore snapshot data into existing entry
           Object.assign(existing, snap.data, { updatedAt: snap.data.updatedAt })
-          await db.put(toPlain(existing))
+          await entryRepository.put(notebookId.value, toPlain(existing))
         } else {
           // Entry was never saved — restore it
           entries.value.push(snap.data)
-          await db.put(toPlain(snap.data))
+          await entryRepository.put(notebookId.value, toPlain(snap.data))
           recovered.push(snap.data)
         }
       }
-      await db.deleteAllSnapshots(notebookId.value)
+      await entryRepository.deleteAllSnapshots(notebookId.value)
       return recovered
     } catch {
       return []
@@ -322,13 +389,74 @@ export function useEntries() {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }
-    await db.put(toPlain(entry))
+    await entryRepository.put(notebookId.value, toPlain(entry))
     entries.value.unshift(entry)
     activeId.value = entry.id
     answersHidden.value = false
     isDirty.value = false
     startSnapshotTimer()
     showToast('新错题已创建')
+  }
+
+  async function enableQuestionGroup() {
+    const entry = activeEntry.value
+    if (!entry || entry.groupId || !notebookId.value) return
+    const now = Date.now()
+    const group: QuestionGroup = {
+      id: genGroupId(),
+      notebookId: notebookId.value,
+      title: entry.title,
+      material: '',
+      createdAt: now,
+      updatedAt: now,
+    }
+    entry.groupId = group.id
+    entry.subQuestionOrder = 0
+    entry.updatedAt = now
+    await Promise.all([
+      questionGroupRepository.put(notebookId.value, toPlain(group)),
+      entryRepository.put(notebookId.value, toPlain(entry)),
+    ])
+    questionGroups.value.unshift(group)
+    isDirty.value = false
+    showToast('已转换为一拖 N 题组')
+  }
+
+  async function addSubQuestion() {
+    const current = activeEntry.value
+    const group = activeGroup.value
+    if (!current || !group || !notebookId.value) return
+    const siblings = activeGroupEntries.value
+    const now = Date.now()
+    const entry: NoteEntry = {
+      id: genId(),
+      notebookId: notebookId.value,
+      title: `${group.title} · ${siblings.length + 1}`,
+      question: '',
+      wrongAnswer: '',
+      correctAnswer: '',
+      subject: current.subject,
+      source: current.source,
+      tags: [...current.tags],
+      groupId: group.id,
+      subQuestionOrder:
+        siblings.reduce((max, entry) => Math.max(max, entry.subQuestionOrder ?? -1), -1) + 1,
+      masteryLevel: 0,
+      consecutivePasses: 0,
+      nextReviewDate: now + settings.value.firstReviewDays * 86400000,
+      createdAt: now,
+      updatedAt: now,
+    }
+    group.updatedAt = now
+    await Promise.all([
+      entryRepository.put(notebookId.value, toPlain(entry)),
+      questionGroupRepository.put(notebookId.value, toPlain(group)),
+    ])
+    entries.value.push(entry)
+    activeId.value = entry.id
+    answersHidden.value = false
+    isDirty.value = false
+    showToast(`已添加第 ${siblings.length + 1} 小题`)
   }
 
   async function createEntryFromDocument(documentBase64: string, preselectSubject?: string) {
@@ -350,7 +478,7 @@ export function useEntries() {
       updatedAt: Date.now(),
       drawings: { question: documentBase64 },
     }
-    await db.put(toPlain(entry))
+    await entryRepository.put(notebookId.value, toPlain(entry))
     entries.value.unshift(entry)
     activeId.value = entry.id
     answersHidden.value = false
@@ -377,13 +505,18 @@ export function useEntries() {
 
     entry.updatedAt = Date.now()
     try {
-      await db.put(toPlain(entry))
+      const group = activeGroup.value
+      if (group) group.updatedAt = entry.updatedAt
+      await Promise.all([
+        entryRepository.put(entry.notebookId, toPlain(entry)),
+        ...(group ? [questionGroupRepository.put(group.notebookId, toPlain(group))] : []),
+      ])
     } catch (err) {
       console.error('Save failed', err)
       return
     }
     try {
-      await db.deleteSnapshot(notebookId.value, activeId.value)
+      await entryRepository.deleteSnapshot(notebookId.value, activeId.value)
     } catch {
       /* ok if missing */
     }
@@ -397,12 +530,19 @@ export function useEntries() {
   // Discard changes — reload from DB
   async function discardChanges() {
     if (!activeId.value) return
-    const saved = await db.get(notebookId.value, activeId.value)
+    if (!notebookId.value) return
+    const saved = await entryRepository.get(notebookId.value, activeId.value)
     if (saved) {
       const idx = entries.value.findIndex((e) => e.id === activeId.value)
       if (idx !== -1) entries.value[idx] = saved
     }
-    await db.deleteSnapshot(notebookId.value, activeId.value)
+    const groupId = saved?.groupId
+    if (groupId) {
+      const savedGroup = await questionGroupRepository.get(notebookId.value, groupId)
+      const groupIndex = questionGroups.value.findIndex((group) => group.id === groupId)
+      if (savedGroup && groupIndex !== -1) questionGroups.value[groupIndex] = savedGroup
+    }
+    await entryRepository.deleteSnapshot(notebookId.value, activeId.value)
     isDirty.value = false
   }
 
@@ -413,7 +553,12 @@ export function useEntries() {
     if (entry) {
       entry.updatedAt = Date.now()
       try {
-        await db.putSnapshot(notebookId.value, activeId.value, toPlain(entry))
+        const group = activeGroup.value
+        if (group) group.updatedAt = entry.updatedAt
+        await Promise.all([
+          entryRepository.putSnapshot(notebookId.value, activeId.value, toPlain(entry)),
+          ...(group ? [questionGroupRepository.put(notebookId.value, toPlain(group))] : []),
+        ])
       } catch {
         /* ignore */
       }
@@ -423,10 +568,29 @@ export function useEntries() {
   async function deleteCurrent() {
     if (!activeId.value) return
     const deletedId = activeId.value
-    await db.delete(notebookId.value, activeId.value)
-    await db.deleteSnapshot(notebookId.value, activeId.value)
+    if (!notebookId.value) return
+    const deletedEntry = activeEntry.value
+    const groupId = deletedEntry?.groupId
+    await entryRepository.delete(notebookId.value, activeId.value)
+    await entryRepository.deleteSnapshot(notebookId.value, activeId.value)
     entries.value = entries.value.filter((e) => e.id !== activeId.value)
-    activeId.value = null
+    const remainingSiblings = groupId
+      ? entries.value
+          .filter((entry) => entry.groupId === groupId)
+          .sort((a, b) => (a.subQuestionOrder ?? 0) - (b.subQuestionOrder ?? 0))
+      : []
+    if (groupId && remainingSiblings.length === 0) {
+      await questionGroupRepository.delete(notebookId.value, groupId)
+      questionGroups.value = questionGroups.value.filter((group) => group.id !== groupId)
+    } else if (groupId) {
+      await Promise.all(
+        remainingSiblings.map((entry, index) => {
+          entry.subQuestionOrder = index
+          return entryRepository.put(entry.notebookId, toPlain(entry))
+        }),
+      )
+    }
+    activeId.value = remainingSiblings[0]?.id ?? null
     isDirty.value = false
     showDeleteModal.value = false
     if (aiEnabled.value) {
@@ -441,7 +605,7 @@ export function useEntries() {
     entry.title = newTitle
     entry.updatedAt = Date.now()
     try {
-      await db.put(toPlain(entry))
+      await entryRepository.put(entry.notebookId, toPlain(entry))
       if (aiEnabled.value) {
         void ragSync.upsertEntry(toPlain(entry))
       }
@@ -479,7 +643,7 @@ export function useEntries() {
       if (entry) {
         entry.sortOrder = idx
         entry.updatedAt = now
-        updates.push(db.put(toPlain(entry)))
+        updates.push(entryRepository.put(entry.notebookId, toPlain(entry)))
       }
     })
     await Promise.all(updates)
@@ -490,9 +654,12 @@ export function useEntries() {
 
   return {
     entries,
+    questionGroups,
     notebookEntries,
     activeId,
     activeEntry,
+    activeGroup,
+    activeGroupEntries,
     answersHidden,
     isDirty,
     toastMsg,
@@ -502,6 +669,8 @@ export function useEntries() {
     loadEntries,
     checkCrashRecovery,
     createEntry,
+    enableQuestionGroup,
+    addSubQuestion,
     createEntryFromDocument,
     loadEntry,
     markDirty,

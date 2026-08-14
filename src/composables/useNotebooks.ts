@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import type { Notebook } from '@/types'
-import { db } from '@/services/db'
+import { notebookRepository } from '@/services/db'
 
 function genId(): string {
   return 'nb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)
@@ -13,7 +13,7 @@ const activeNotebook = computed(() => notebooks.value.find((n) => n.id === activ
 
 async function loadNotebooks() {
   try {
-    const list = await db.getAllNotebooks()
+    const list = await notebookRepository.getAll()
     list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     notebooks.value = list
   } catch (e) {
@@ -38,7 +38,7 @@ async function createNotebook(
     createdAt: now,
     updatedAt: now,
   }
-  await db.putNotebook(nb)
+  await notebookRepository.put(nb)
   notebooks.value.push(nb)
   return nb
 }
@@ -51,13 +51,13 @@ async function updateNotebook(
   if (!nb) return
   Object.assign(nb, partial, { updatedAt: Date.now() })
   // Spread to plain object — Vue reactive Proxy can't cross Electron IPC
-  await db.putNotebook({ ...nb })
+  await notebookRepository.put({ ...nb })
 }
 
 async function deleteNotebook(id: string) {
   // Cascade: delete all entries in this notebook
   // The Electron main.cjs handles cascade; for idbDb we handle it here
-  await db.deleteNotebook(id)
+  await notebookRepository.delete(id)
   notebooks.value = notebooks.value.filter((n) => n.id !== id)
   if (activeId.value === id) activeId.value = null
 }
@@ -97,7 +97,7 @@ async function reorderNotebooks(orderedIds: string[]) {
     if (nb) {
       nb.sortOrder = idx
       nb.updatedAt = now
-      updates.push(db.putNotebook({ ...nb }))
+      updates.push(notebookRepository.put({ ...nb }))
     }
   })
   await Promise.all(updates)

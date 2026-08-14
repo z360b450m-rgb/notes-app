@@ -28,21 +28,37 @@ jobs:
 
       - name: Install Playwright
         run: |
-          pip install playwright
+          python -m pip install --disable-pip-version-check --requirement requirements-e2e.txt
           python -m playwright install chromium --with-deps
 
       - name: Start dev server
-        run: npm run dev &
+        run: npm run dev -- --host 127.0.0.1 > vite.log 2>&1 &
         env:
           NODE_ENV: test
 
       - name: Wait for server
         run: |
           for i in $(seq 1 30); do
-            curl -s http://localhost:5173 > /dev/null && echo "Server ready" && break
+            if curl --fail --silent --show-error http://127.0.0.1:5173/ > /dev/null; then
+              echo "Server ready"
+              exit 0
+            fi
             echo "Waiting... ($i)"
             sleep 1
           done
+          echo "Vite did not become ready within 30 seconds" >&2
+          cat vite.log >&2 || true
+          exit 1
 
       - name: Run E2E tests
         run: npm run test:e2e
+
+      - name: Upload E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-diagnostics
+          path: |
+            vite.log
+            test-results/
+          if-no-files-found: ignore

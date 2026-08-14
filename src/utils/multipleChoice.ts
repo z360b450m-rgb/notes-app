@@ -12,24 +12,20 @@ export interface MultipleChoiceQuestion {
 // Besides normal punctuation, some exam sources use “A①②③” with no separator.
 const CIRCLED_NUMBER = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳'
 const OPTION_END = `[.．、:：)）]\\s*|(?=[${CIRCLED_NUMBER}])|(?=[ \\t]*$)`
-const OPTION_LINE = new RegExp(
-  `^\\s*([A-H])\\s*(?:${OPTION_END})`,
-  'im',
-)
+const OPTION_LINE = new RegExp(`^\\s*([A-H])\\s*(?:${OPTION_END})`, 'im')
 const OPTION_BLOCK = new RegExp(
   `^\\s*([A-H])\\s*(?:${OPTION_END})([\\s\\S]*?)(?=^\\s*[A-H]\\s*(?:${OPTION_END})|(?![\\s\\S]))`,
   'gim',
 )
 
 function normalize(value: string): string {
-  return value
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/&nbsp;/gi, ' ')
-    // Text copied from a document often keeps every option on one line.
-    .replace(
-      new RegExp(`\\s+([A-H])\\s*(?:${OPTION_END})`, 'gm'),
-      '\n$1. ',
-    )
+  return (
+    value
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/&nbsp;/gi, ' ')
+      // Text copied from a document often keeps every option on one line.
+      .replace(new RegExp(`\\s+([A-H])\\s*(?:${OPTION_END})`, 'gm'), '\n$1. ')
+  )
 }
 
 /** Recognizes the common A. / B. / C. / D. style while keeping rich text intact. */

@@ -374,7 +374,9 @@ function loadArchive(vocabularyRoot, archiveId) {
 }
 
 function createArchive(vocabularyRoot, requestedName) {
-  const name = String(requestedName || '').trim().slice(0, 80)
+  const name = String(requestedName || '')
+    .trim()
+    .slice(0, 80)
   if (!name) throw new Error('请输入词库名称')
   const archiveId = safeArchiveId(`manual-${name}`)
   const archiveDir = safeChild(vocabularyRoot, archiveId)

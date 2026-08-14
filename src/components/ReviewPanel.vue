@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // @AI-NOTE: 复习面板组件 —— 复习流程由 useReview Hook 驱动。
 // 禁止在此实现 SRS 算法、间隔计算、直接操作复习日志存储。
-import { ref, watch, nextTick, onUnmounted, computed } from 'vue'
-import type { NoteEntry } from '@/types'
+import { ref, watch, nextTick, computed } from 'vue'
+import type { NoteEntry, QuestionGroup } from '@/types'
 import type { ReviewOutcome, SessionRecord } from '@/composables/useReview'
 import { getMasteryLabel } from '@/composables/useStats'
 import { sanitizeHtml, formatMcOptions } from '@/utils/sanitize'
@@ -10,6 +10,7 @@ import { parseMultipleChoice } from '@/utils/multipleChoice'
 
 const props = defineProps<{
   entry: NoteEntry | undefined
+  group?: QuestionGroup
   answered: boolean
   elapsedMs: number
   progress: string
@@ -60,62 +61,19 @@ const sanitizedCorrectAnswer = computed(
     sanitizeHtml(formatMcOptions(props.entry?.correctAnswer || '')) ||
     "<span class='text-gray-300 dark:text-[#4a4a48]'>无内容</span>",
 )
+const sanitizedMaterial = computed(
+  () =>
+    sanitizeHtml(props.group?.material || '') ||
+    "<span class='text-gray-300 dark:text-[#4a4a48]'>无公共材料</span>",
+)
 
 function sanitizedFallback(html: string | undefined, fallback: string): string {
   return sanitizeHtml(html || '') || fallback
 }
 const questionContentRef = ref<HTMLDivElement | null>(null)
+const materialContentRef = ref<HTMLDivElement | null>(null)
 const wrongContentRef = ref<HTMLDivElement | null>(null)
 const correctContentRef = ref<HTMLDivElement | null>(null)
-const questionPanelEl = ref<HTMLDivElement | null>(null)
-const resizeH = ref<HTMLDivElement | null>(null)
-
-interface ResizeState {
-  startY: number
-  questionH: number
-  containerH: number
-}
-let resizeState: ResizeState | null = null
-
-function startResize(e: MouseEvent) {
-  e.preventDefault()
-  if (!questionPanelEl.value) return
-  const container = questionPanelEl.value.parentElement
-  if (!container) return
-  resizeState = {
-    startY: e.clientY,
-    questionH: questionPanelEl.value.offsetHeight,
-    containerH: container.offsetHeight,
-  }
-  resizeH.value?.classList.add('dragging')
-  window.addEventListener('mousemove', onResize)
-  window.addEventListener('mouseup', stopResize)
-}
-
-function onResize(e: MouseEvent) {
-  if (!resizeState || !questionPanelEl.value) return
-  const r = resizeState
-  const deltaY = e.clientY - r.startY
-  const gap = 60
-  const minQ = 80
-  const minA = 200
-  const maxQ = r.containerH - minA - gap
-  const newQH = Math.max(minQ, Math.min(maxQ, r.questionH + deltaY))
-  questionPanelEl.value.style.flex = '0 0 ' + newQH + 'px'
-}
-
-function stopResize() {
-  resizeH.value?.classList.remove('dragging')
-  resizeState = null
-  window.removeEventListener('mousemove', onResize)
-  window.removeEventListener('mouseup', stopResize)
-}
-
-onUnmounted(() => {
-  window.removeEventListener('mousemove', onResize)
-  window.removeEventListener('mouseup', stopResize)
-})
-
 watch(
   () => props.entry,
   () => {
@@ -125,6 +83,9 @@ watch(
     nextTick(() => {
       if (questionContentRef.value && props.entry?.id) {
         emit('mount-canvas', questionContentRef.value, props.entry.id, 'question')
+      }
+      if (materialContentRef.value && props.entry?.id && props.group) {
+        emit('mount-canvas', materialContentRef.value, props.entry.id, 'material')
       }
       if (wrongContentRef.value && props.entry?.id) {
         emit('mount-canvas', wrongContentRef.value, props.entry.id, 'wrongAnswer')
@@ -258,7 +219,10 @@ function closeSummaryEntry() {
   summaryEntryId.value = null
 }
 
-function summaryEntryHtml(entry: NoteEntry | undefined, field: 'question' | 'wrongAnswer' | 'correctAnswer') {
+function summaryEntryHtml(
+  entry: NoteEntry | undefined,
+  field: 'question' | 'wrongAnswer' | 'correctAnswer',
+) {
   if (!entry) return "<span class='text-gray-300'>题目已删除</span>"
   return sanitizedFallback(entry[field], '(无内容)')
 }
@@ -322,30 +286,39 @@ function ratingColor(q: number | string): string {
         <div class="w-full max-w-lg pb-10">
           <div v-if="summaryEntry" class="flex flex-col gap-3">
             <div class="flex items-center justify-between">
-              <button
-                class="text-xs text-accent hover:underline"
-                @click="closeSummaryEntry"
-              >
+              <button class="text-xs text-accent hover:underline" @click="closeSummaryEntry">
                 ← 返回列表
               </button>
-              <span class="text-[11px] text-gray-400 dark:text-brand-mid">{{ summaryEntry.subject }}</span>
+              <span class="text-[11px] text-gray-400 dark:text-brand-mid">{{
+                summaryEntry.subject
+              }}</span>
             </div>
-            <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-[#2e2e2c] dark:bg-[#141413]">
+            <div
+              class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-[#2e2e2c] dark:bg-[#141413]"
+            >
               <div class="mb-2 text-xs font-semibold text-accent">题目</div>
               <div
                 class="preserve-input-format text-sm leading-relaxed text-gray-800 dark:text-brand-light-gray"
                 v-html="summaryEntryHtml(summaryEntry, 'question')"
               />
             </div>
-            <div class="rounded-xl border border-red-100 bg-red-50/60 p-4 dark:border-red-500/20 dark:bg-red-500/10">
-              <div class="mb-2 text-xs font-semibold text-red-600 dark:text-red-400">错误答案 / 你的记录</div>
+            <div
+              class="rounded-xl border border-red-100 bg-red-50/60 p-4 dark:border-red-500/20 dark:bg-red-500/10"
+            >
+              <div class="mb-2 text-xs font-semibold text-red-600 dark:text-red-400">
+                错误答案 / 你的记录
+              </div>
               <div
                 class="preserve-input-format text-sm leading-relaxed text-gray-800 dark:text-brand-light-gray"
                 v-html="summaryEntryHtml(summaryEntry, 'wrongAnswer')"
               />
             </div>
-            <div class="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
-              <div class="mb-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">正确答案 / 解析</div>
+            <div
+              class="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10"
+            >
+              <div class="mb-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                正确答案 / 解析
+              </div>
               <div
                 class="preserve-input-format text-sm leading-relaxed text-gray-800 dark:text-brand-light-gray"
                 v-html="summaryEntryHtml(summaryEntry, 'correctAnswer')"
@@ -360,7 +333,9 @@ function ratingColor(q: number | string): string {
               class="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 text-left transition-colors hover:border-accent/40 hover:bg-accent/5 dark:border-[#2e2e2c] dark:bg-[#141413] dark:hover:bg-accent/10"
               @click="openSummaryEntry(rec.entryId)"
             >
-              <span class="w-5 text-[11px] tabular-nums text-gray-300 dark:text-[#4a4a48]">{{ i + 1 }}</span>
+              <span class="w-5 text-[11px] tabular-nums text-gray-300 dark:text-[#4a4a48]">{{
+                i + 1
+              }}</span>
               <span
                 class="w-2.5 h-2.5 rounded-full flex-shrink-0"
                 :style="{ backgroundColor: ratingColor(rec.quality) }"
@@ -371,15 +346,24 @@ function ratingColor(q: number | string): string {
                   v-html="sanitizedFallback(entryById(rec.entryId)?.question, '(无题目)')"
                 />
                 <div class="mt-0.5 flex items-center gap-2">
-                  <span class="text-[10px] text-gray-400 dark:text-brand-mid">{{ entryById(rec.entryId)?.subject || '' }}</span>
-                  <span v-if="rec.isCorrect === false" class="text-[10px] text-red-500">选 {{ rec.selectedChoice }}，正确 {{ rec.correctChoice }}</span>
+                  <span class="text-[10px] text-gray-400 dark:text-brand-mid">{{
+                    entryById(rec.entryId)?.subject || ''
+                  }}</span>
+                  <span v-if="rec.isCorrect === false" class="text-[10px] text-red-500"
+                    >选 {{ rec.selectedChoice }}，正确 {{ rec.correctChoice }}</span
+                  >
                 </div>
               </div>
-              <span class="text-[11px] tabular-nums text-gray-400 dark:text-brand-mid">{{ formatTime(rec.elapsedMs) }}</span>
-              <span class="w-16 flex-shrink-0 text-right text-[11px] font-medium" :style="{ color: ratingColor(rec.quality) }">{{ ratingLabel(rec.quality) }}</span>
+              <span class="text-[11px] tabular-nums text-gray-400 dark:text-brand-mid">{{
+                formatTime(rec.elapsedMs)
+              }}</span>
+              <span
+                class="w-16 flex-shrink-0 text-right text-[11px] font-medium"
+                :style="{ color: ratingColor(rec.quality) }"
+                >{{ ratingLabel(rec.quality) }}</span
+              >
             </button>
           </div>
-
         </div>
 
         <button
@@ -415,153 +399,174 @@ function ratingColor(q: number | string): string {
         >
       </div>
 
-      <!-- Question -->
       <div
-        ref="questionPanelEl"
-        class="bg-white dark:bg-[#141413] border border-gray-100 dark:border-[#2e2e2c] rounded-xl shadow-sm flex flex-col overflow-hidden"
-        style="flex: 2 1 0%; min-height: 80px"
+        class="flex-1 min-h-0 grid gap-3 overflow-y-auto lg:overflow-hidden"
+        :class="
+          group
+            ? 'grid-cols-1 lg:grid-cols-[minmax(280px,1fr)_minmax(360px,1.08fr)]'
+            : 'grid-cols-1'
+        "
       >
-        <div
-          class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-gray-400 dark:text-brand-mid border-b border-gray-100 dark:border-[#2e2e2c] bg-brand-light dark:bg-[#1e1e1c] flex-shrink-0"
+        <section
+          v-if="group"
+          class="min-h-[180px] bg-white dark:bg-[#141413] border border-gray-100 dark:border-[#2e2e2c] rounded-xl shadow-sm flex flex-col overflow-hidden"
         >
-          <span class="w-2 h-2 rounded-full bg-accent" />
-          题目
-          <span
-            v-if="entry.subject"
-            class="ml-auto text-[10px] text-gray-300 dark:text-[#4a4a48]"
-            >{{ entry.subject }}</span
+          <div
+            class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-gray-500 dark:text-brand-mid border-b border-gray-100 dark:border-[#2e2e2c] bg-brand-light dark:bg-[#1e1e1c]"
           >
-        </div>
-        <div class="flex-1 overflow-y-auto">
-          <div ref="questionContentRef" :style="{ position: 'relative', minHeight: '100%' }">
-            <div v-if="multipleChoice" class="px-3.5 py-3">
+            <span class="w-2 h-2 rounded-full bg-sky-400" />
+            公共材料
+          </div>
+          <div class="flex-1 overflow-y-auto">
+            <div ref="materialContentRef" class="relative min-h-full">
               <div
-                class="preserve-input-format text-base leading-relaxed md-content"
-                v-html="sanitizedChoiceStem"
+                class="preserve-input-format px-4 py-3 text-base leading-relaxed md-content"
+                v-html="sanitizedMaterial"
               />
-              <div class="mt-4 grid gap-2">
-                <button
-                  v-for="option in multipleChoice.options"
-                  :key="option.key"
-                  type="button"
-                  class="w-full flex items-start gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-all duration-200 disabled:cursor-default"
-                  :class="choiceClass(option.key)"
-                  :disabled="!!selectedChoice"
-                  @click="selectChoice(option.key)"
-                >
-                  <span
-                    class="w-6 h-6 rounded-full border border-current flex items-center justify-center text-xs font-bold flex-shrink-0"
-                    >{{ option.key }}</span
-                  >
-                  <span
-                    class="preserve-input-format md-content leading-relaxed"
-                    v-html="sanitizeHtml(formatMcOptions(option.content))"
-                  />
-                </button>
-              </div>
-              <p
-                v-if="selectedChoice"
-                class="mt-3 text-xs font-medium"
-                :class="
-                  selectedChoice === multipleChoice.correctOption
-                    ? 'text-emerald-600 dark:text-emerald-300'
-                    : 'text-red-600 dark:text-red-300'
-                "
-              >
-                {{
-                  !multipleChoice.correctOption
-                    ? `已选择 ${selectedChoice}，此题尚未设置正确答案，无法自动判定对错。`
-                    : selectedChoice === multipleChoice.correctOption
-                      ? '回答正确，请在下方记录掌握程度。'
-                      : `回答错误，正确选项是 ${multipleChoice.correctOption}。请查看解析后记录掌握程度。`
-                }}
-              </p>
             </div>
-            <div
-              v-else
-              class="preserve-input-format px-3.5 py-3 text-base leading-relaxed md-content"
-              v-html="sanitizedQuestion"
-            />
           </div>
-        </div>
-      </div>
+        </section>
 
-      <!-- Resize handle: question <-> answers -->
-      <div
-        ref="resizeH"
-        class="resize-h flex-shrink-0 h-2 cursor-row-resize bg-transparent hover:bg-accent/20 transition-colors relative -my-0.5 rounded"
-        @mousedown="startResize($event)"
-      >
-        <span
-          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-0.5 rounded-sm bg-gray-200 dark:bg-[#2e2e2c] resize-h-bar"
-        />
-      </div>
-
-      <!-- Wrong answer: expanded by default, clickable header when collapsed -->
-      <div
-        class="flex flex-col overflow-hidden rounded-lg border transition-all duration-300"
-        :class="
-          !showCorrect
-            ? 'flex-1 min-h-0 bg-red-50 border-red-100 dark:bg-red-500/10 dark:border-red-500/20'
-            : 'flex-shrink-0 bg-red-50/30 dark:bg-red-500/5 border-red-100/50 dark:border-red-500/10 cursor-pointer hover:brightness-[0.97]'
-        "
-        @click="showCorrect ? showWrong() : undefined"
-      >
-        <div
-          class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-red-600 dark:text-red-400 border-b border-red-100 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10 flex-shrink-0"
-        >
-          <span class="w-2 h-2 rounded-full bg-red-400" />
-          错误答案
-          <span v-if="showCorrect" class="ml-auto text-[10px] text-red-500 dark:text-red-400"
-            >点击查看</span
+        <div class="min-h-[500px] lg:min-h-0 flex flex-col gap-3 overflow-hidden">
+          <!-- Question -->
+          <div
+            class="bg-white dark:bg-[#141413] border border-gray-100 dark:border-[#2e2e2c] rounded-xl shadow-sm flex flex-col overflow-hidden"
+            style="flex: 1.15 1 0%; min-height: 100px"
           >
-        </div>
-        <div v-if="!showCorrect" class="flex-1 overflow-y-auto">
-          <div ref="wrongContentRef" :style="{ position: 'relative', minHeight: '100%' }">
             <div
-              class="preserve-input-format px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
-              v-html="sanitizedWrongAnswer"
-            />
+              class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-gray-400 dark:text-brand-mid border-b border-gray-100 dark:border-[#2e2e2c] bg-brand-light dark:bg-[#1e1e1c] flex-shrink-0"
+            >
+              <span class="w-2 h-2 rounded-full bg-accent" />
+              题目
+              <span
+                v-if="entry.subject"
+                class="ml-auto text-[10px] text-gray-300 dark:text-[#4a4a48]"
+                >{{ entry.subject }}</span
+              >
+            </div>
+            <div class="flex-1 overflow-y-auto">
+              <div ref="questionContentRef" :style="{ position: 'relative', minHeight: '100%' }">
+                <div v-if="multipleChoice" class="px-3.5 py-3">
+                  <div
+                    class="preserve-input-format text-base leading-relaxed md-content"
+                    v-html="sanitizedChoiceStem"
+                  />
+                  <div class="mt-4 grid gap-2">
+                    <button
+                      v-for="option in multipleChoice.options"
+                      :key="option.key"
+                      type="button"
+                      class="w-full flex items-start gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-all duration-200 disabled:cursor-default"
+                      :class="choiceClass(option.key)"
+                      :disabled="!!selectedChoice"
+                      @click="selectChoice(option.key)"
+                    >
+                      <span
+                        class="w-6 h-6 rounded-full border border-current flex items-center justify-center text-xs font-bold flex-shrink-0"
+                        >{{ option.key }}</span
+                      >
+                      <span
+                        class="preserve-input-format md-content leading-relaxed"
+                        v-html="sanitizeHtml(formatMcOptions(option.content))"
+                      />
+                    </button>
+                  </div>
+                  <p
+                    v-if="selectedChoice"
+                    class="mt-3 text-xs font-medium"
+                    :class="
+                      selectedChoice === multipleChoice.correctOption
+                        ? 'text-emerald-600 dark:text-emerald-300'
+                        : 'text-red-600 dark:text-red-300'
+                    "
+                  >
+                    {{
+                      !multipleChoice.correctOption
+                        ? `已选择 ${selectedChoice}，此题尚未设置正确答案，无法自动判定对错。`
+                        : selectedChoice === multipleChoice.correctOption
+                          ? '回答正确，请在下方记录掌握程度。'
+                          : `回答错误，正确选项是 ${multipleChoice.correctOption}。请查看解析后记录掌握程度。`
+                    }}
+                  </p>
+                </div>
+                <div
+                  v-else
+                  class="preserve-input-format px-3.5 py-3 text-base leading-relaxed md-content"
+                  v-html="sanitizedQuestion"
+                />
+              </div>
+            </div>
           </div>
-        </div>
-        <div v-else class="flex items-center justify-center py-4">
-          <span class="text-sm font-medium text-red-500 dark:text-red-400">点击显示错误答案</span>
-        </div>
-      </div>
 
-      <!-- Correct answer: collapsed by default, clickable header when collapsed -->
-      <div
-        class="flex flex-col overflow-hidden rounded-lg border transition-all duration-300"
-        :class="
-          showCorrect
-            ? 'flex-1 min-h-0 bg-emerald-50 border-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/20'
-            : 'flex-shrink-0 bg-emerald-50 border-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/20 cursor-pointer hover:brightness-[0.97]'
-        "
-        @click="!showCorrect ? reveal() : undefined"
-      >
-        <div
-          class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 border-b border-emerald-100 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10 flex-shrink-0"
-        >
-          <span class="w-2 h-2 rounded-full bg-emerald-400" />
-          正确答案
-          <span
-            v-if="!showCorrect"
-            class="ml-auto text-[10px] text-emerald-500 dark:text-emerald-400"
-            >点击查看</span
+          <!-- Wrong answer: expanded by default, clickable header when collapsed -->
+          <div
+            class="flex flex-col overflow-hidden rounded-lg border transition-all duration-300"
+            :class="
+              !showCorrect
+                ? 'flex-1 min-h-0 bg-red-50 border-red-100 dark:bg-red-500/10 dark:border-red-500/20'
+                : 'flex-shrink-0 bg-red-50/30 dark:bg-red-500/5 border-red-100/50 dark:border-red-500/10 cursor-pointer hover:brightness-[0.97]'
+            "
+            @click="showCorrect ? showWrong() : undefined"
           >
-        </div>
-        <div v-if="showCorrect" class="flex-1 overflow-y-auto">
-          <div ref="correctContentRef" :style="{ position: 'relative', minHeight: '100%' }">
             <div
-              class="preserve-input-format px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
-              v-html="sanitizedCorrectAnswer"
-            />
+              class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-red-600 dark:text-red-400 border-b border-red-100 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10 flex-shrink-0"
+            >
+              <span class="w-2 h-2 rounded-full bg-red-400" />
+              错误答案
+              <span v-if="showCorrect" class="ml-auto text-[10px] text-red-500 dark:text-red-400"
+                >点击查看</span
+              >
+            </div>
+            <div v-if="!showCorrect" class="flex-1 overflow-y-auto">
+              <div ref="wrongContentRef" :style="{ position: 'relative', minHeight: '100%' }">
+                <div
+                  class="preserve-input-format px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
+                  v-html="sanitizedWrongAnswer"
+                />
+              </div>
+            </div>
+            <div v-else class="flex items-center justify-center py-4">
+              <span class="text-sm font-medium text-red-500 dark:text-red-400"
+                >点击显示错误答案</span
+              >
+            </div>
           </div>
-        </div>
-        <div v-else class="flex items-center justify-center py-4">
-          <span class="text-sm font-medium text-emerald-500 dark:text-emerald-400"
-            >点击显示正确答案</span
+
+          <!-- Correct answer: collapsed by default, clickable header when collapsed -->
+          <div
+            class="flex flex-col overflow-hidden rounded-lg border transition-all duration-300"
+            :class="
+              showCorrect
+                ? 'flex-1 min-h-0 bg-emerald-50 border-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/20'
+                : 'flex-shrink-0 bg-emerald-50 border-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/20 cursor-pointer hover:brightness-[0.97]'
+            "
+            @click="!showCorrect ? reveal() : undefined"
           >
+            <div
+              class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 border-b border-emerald-100 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10 flex-shrink-0"
+            >
+              <span class="w-2 h-2 rounded-full bg-emerald-400" />
+              正确答案
+              <span
+                v-if="!showCorrect"
+                class="ml-auto text-[10px] text-emerald-500 dark:text-emerald-400"
+                >点击查看</span
+              >
+            </div>
+            <div v-if="showCorrect" class="flex-1 overflow-y-auto">
+              <div ref="correctContentRef" :style="{ position: 'relative', minHeight: '100%' }">
+                <div
+                  class="preserve-input-format px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
+                  v-html="sanitizedCorrectAnswer"
+                />
+              </div>
+            </div>
+            <div v-else class="flex items-center justify-center py-4">
+              <span class="text-sm font-medium text-emerald-500 dark:text-emerald-400"
+                >点击显示正确答案</span
+              >
+            </div>
+          </div>
         </div>
       </div>
 
@@ -615,20 +620,3 @@ function ratingColor(q: number | string): string {
     </div>
   </div>
 </template>
-
-<style scoped>
-.resize-h-bar {
-  background: #e5e7eb;
-}
-.dark .resize-h-bar {
-  background: #4b5563;
-}
-.resize-h:hover .resize-h-bar,
-.resize-h.dragging .resize-h-bar {
-  background: #d97757;
-}
-.dark .resize-h:hover .resize-h-bar,
-.dark .resize-h.dragging .resize-h-bar {
-  background: #e8a87c;
-}
-</style>

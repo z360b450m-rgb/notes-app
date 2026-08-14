@@ -194,7 +194,9 @@ function parseStructuredTextImport(raw: string, labels: TextImportLabels): TextI
   const isCardStart = (index: number) => {
     const term = lines[index]?.trim()
     const following = nextNonEmpty(index + 1)
-    return !!term && !meaningMarker.test(term) && following >= 0 && meaningMarker.test(lines[following])
+    return (
+      !!term && !meaningMarker.test(term) && following >= 0 && meaningMarker.test(lines[following])
+    )
   }
 
   const items: TextImportItem[] = []
@@ -284,7 +286,12 @@ const filteredVocabularyWords = computed(() => {
   return archive.value.words.filter((word) => {
     if (wordTagFilter.value && !word.tags.includes(wordTagFilter.value)) return false
     if (!query) return true
-    return [plainText(word.word), plainText(word.meaning), plainText(word.phonetic), word.tags.join(' ')]
+    return [
+      plainText(word.word),
+      plainText(word.meaning),
+      plainText(word.phonetic),
+      word.tags.join(' '),
+    ]
       .join(' ')
       .toLowerCase()
       .includes(query)
@@ -380,7 +387,10 @@ async function confirmTextImport() {
     let targetArchive: VocabularyArchive
     let targetProgress: VocabularyProgress
     if (textImportTargetId.value === '__new__') {
-      targetArchive = await vocabularyService.createArchive(props.notebookId, textImportName.value.trim())
+      targetArchive = await vocabularyService.createArchive(
+        props.notebookId,
+        textImportName.value.trim(),
+      )
       targetProgress = await vocabularyService.loadProgress(props.notebookId, targetArchive.id)
       createdArchive = true
       createdArchiveId = targetArchive.id
@@ -395,7 +405,9 @@ async function confirmTextImport() {
           ? progress.value
           : await vocabularyService.loadProgress(props.notebookId, targetArchive.id)
     }
-    const existingWords = new Set(targetArchive.words.map((word) => plainText(word.word).toLowerCase()))
+    const existingWords = new Set(
+      targetArchive.words.map((word) => plainText(word.word).toLowerCase()),
+    )
     const batchTags = textImportBatchTags.value
       .split(/[,，]/)
       .map((tag) => tag.trim())
@@ -477,12 +489,22 @@ function openAddWord() {
   addWordOpen.value = true
 }
 
+function closeAddWord() {
+  addWordOpen.value = false
+  editingWordId.value = null
+}
+
 function openEditWord(word: VocabularyWord) {
   editingWordId.value = word.id
   wordDraft.value = {
-    word: plainText(word.word), phonetic: plainText(word.phonetic), meaning: plainText(word.meaning),
-    exampleEn: plainText(word.exampleEn), exampleZh: plainText(word.exampleZh), note: plainText(word.note),
-    details: plainText(word.details || ''), tags: word.tags.join(', '),
+    word: plainText(word.word),
+    phonetic: plainText(word.phonetic),
+    meaning: plainText(word.meaning),
+    exampleEn: plainText(word.exampleEn),
+    exampleZh: plainText(word.exampleZh),
+    note: plainText(word.note),
+    details: plainText(word.details || ''),
+    tags: word.tags.join(', '),
   }
   addWordOpen.value = true
 }
@@ -513,7 +535,10 @@ async function addWord() {
     ? archive.value.words.findIndex((word) => word.id === editingWordId.value)
     : -1
   const original = existingIndex >= 0 ? archive.value.words[existingIndex] : null
-  const word = { id: original?.id ?? `manual-${now}-${Math.random().toString(36).slice(2, 8)}`, ...wordData }
+  const word = {
+    id: original?.id ?? `manual-${now}-${Math.random().toString(36).slice(2, 8)}`,
+    ...wordData,
+  }
   if (existingIndex >= 0) archive.value.words.splice(existingIndex, 1, word)
   else archive.value.words.push(word)
   try {
@@ -528,13 +553,20 @@ async function addWord() {
     }
     await reloadArchives()
     addWordOpen.value = false
-    message.value = editingWordId.value ? `已更新单词“${draft.word.trim()}”` : `已添加单词“${draft.word.trim()}”`
+    message.value = editingWordId.value
+      ? `已更新单词“${draft.word.trim()}”`
+      : `已添加单词“${draft.word.trim()}”`
     editingWordId.value = null
   } catch (error) {
     if (existingIndex >= 0 && original) archive.value.words.splice(existingIndex, 1, original)
     else archive.value.words.pop()
     message.value = error instanceof Error ? error.message : '保存单词失败'
   }
+}
+
+function openDeleteWord(word: VocabularyWord) {
+  deletingWord.value = word
+  deleteWordOpen.value = true
 }
 
 async function confirmDeleteWord() {
@@ -1331,9 +1363,17 @@ onUnmounted(() => {
               <span class="shrink-0 text-xs tabular-nums text-[#999]">{{ index + 1 }}</span>
               <span class="min-w-0">
                 <strong class="block truncate text-sm">{{ plainText(word.word) }}</strong>
-                <span class="block truncate text-xs text-[#888]">{{ plainText(word.meaning) }}</span>
+                <span class="block truncate text-xs text-[#888]">{{
+                  plainText(word.meaning)
+                }}</span>
               </span>
-              <svg class="ml-auto h-4 w-4 shrink-0 text-[#b5b5ad]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg
+                class="ml-auto h-4 w-4 shrink-0 text-[#b5b5ad]"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path d="m9 18 6-6-6-6" />
               </svg>
             </button>
@@ -1391,7 +1431,11 @@ onUnmounted(() => {
           <span class="text-xs text-[#888]">标签筛选：</span>
           <button
             class="rounded-full border px-2.5 py-1 text-xs transition-colors"
-            :class="wordTagFilter === null ? 'border-[#788c5d] bg-[#f3f6ef] text-[#52633e] dark:bg-[#20251c]' : 'border-[#ddd] text-[#777] dark:border-[#444]'"
+            :class="
+              wordTagFilter === null
+                ? 'border-[#788c5d] bg-[#f3f6ef] text-[#52633e] dark:bg-[#20251c]'
+                : 'border-[#ddd] text-[#777] dark:border-[#444]'
+            "
             @click="setWordTagFilter(null)"
           >
             全部
@@ -1400,7 +1444,11 @@ onUnmounted(() => {
             v-for="tag in vocabularyTags"
             :key="tag"
             class="rounded-full border px-2.5 py-1 text-xs transition-colors"
-            :class="wordTagFilter === tag ? 'border-[#788c5d] bg-[#f3f6ef] text-[#52633e] dark:bg-[#20251c]' : 'border-[#ddd] text-[#777] dark:border-[#444]'"
+            :class="
+              wordTagFilter === tag
+                ? 'border-[#788c5d] bg-[#f3f6ef] text-[#52633e] dark:bg-[#20251c]'
+                : 'border-[#ddd] text-[#777] dark:border-[#444]'
+            "
             @click="setWordTagFilter(tag)"
           >
             # {{ tag }}
@@ -1438,11 +1486,18 @@ onUnmounted(() => {
                 >
               </span>
             </div>
-            <div class="preserve-input-format min-w-0 break-words leading-6" v-html="cleanHtml(word.meaning)" />
+            <div
+              class="preserve-input-format min-w-0 break-words leading-6"
+              v-html="cleanHtml(word.meaning)"
+            />
             <span class="text-xs text-[#888]">{{ wordStatus(word.id) }}</span>
             <div class="flex items-start gap-2 text-xs">
-              <button class="text-[#788c5d] hover:underline" @click="openEditWord(word)">编辑</button>
-              <button class="text-red-500 hover:underline" @click="deletingWord = word; deleteWordOpen = true">删除</button>
+              <button class="text-[#788c5d] hover:underline" @click="openEditWord(word)">
+                编辑
+              </button>
+              <button class="text-red-500 hover:underline" @click="openDeleteWord(word)">
+                删除
+              </button>
             </div>
           </div>
         </div>
@@ -1497,7 +1552,16 @@ onUnmounted(() => {
           aria-label="上一个单词"
           @click="previousWord"
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 18-6-6 6-6" /></svg>
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+          >
+            <path d="m15 18-6-6 6-6" />
+          </svg>
         </button>
         <button
           class="absolute right-0 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-[#d97757]/30 bg-white/95 text-[#d97757] shadow-lg transition hover:scale-105 hover:bg-[#fdf0e8] disabled:cursor-not-allowed disabled:opacity-30 dark:bg-[#1e1e1c] dark:hover:bg-[#2e2018] sm:-right-16"
@@ -1506,7 +1570,16 @@ onUnmounted(() => {
           aria-label="下一个单词"
           @click="nextWord"
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m9 18 6-6-6-6" /></svg>
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+          >
+            <path d="m9 18 6-6-6-6" />
+          </svg>
         </button>
         <div class="mb-5 flex items-center justify-between text-sm">
           <button class="flex items-center gap-1 text-[#788c5d]" @click="view = 'library'">
@@ -1581,23 +1654,38 @@ onUnmounted(() => {
                 <div class="space-y-5">
                   <div>
                     <h3 class="mb-2 text-xs font-bold text-[#888]">中文释义</h3>
-                    <div class="preserve-input-format leading-7" v-html="cleanHtml(currentWord.meaning)" />
+                    <div
+                      class="preserve-input-format leading-7"
+                      v-html="cleanHtml(currentWord.meaning)"
+                    />
                   </div>
                   <div v-if="currentWord.details">
                     <h3 class="mb-2 text-xs font-bold text-[#888]">答案后详解</h3>
-                    <div class="answer-details preserve-input-format text-sm leading-7" v-html="cleanHtml(currentWord.details)" />
+                    <div
+                      class="answer-details preserve-input-format text-sm leading-7"
+                      v-html="cleanHtml(currentWord.details)"
+                    />
                   </div>
                   <div v-if="currentWord.exampleEn">
                     <h3 class="mb-2 text-xs font-bold text-[#888]">英语例句</h3>
-                    <div class="preserve-input-format leading-7" v-html="cleanHtml(currentWord.exampleEn)" />
+                    <div
+                      class="preserve-input-format leading-7"
+                      v-html="cleanHtml(currentWord.exampleEn)"
+                    />
                   </div>
                   <div v-if="currentWord.exampleZh">
                     <h3 class="mb-2 text-xs font-bold text-[#888]">例句翻译</h3>
-                    <div class="preserve-input-format leading-7" v-html="cleanHtml(currentWord.exampleZh)" />
+                    <div
+                      class="preserve-input-format leading-7"
+                      v-html="cleanHtml(currentWord.exampleZh)"
+                    />
                   </div>
                   <div v-if="currentWord.note">
                     <h3 class="mb-2 text-xs font-bold text-[#888]">注释</h3>
-                    <div class="preserve-input-format leading-7" v-html="cleanHtml(currentWord.note)" />
+                    <div
+                      class="preserve-input-format leading-7"
+                      v-html="cleanHtml(currentWord.note)"
+                    />
                   </div>
                 </div>
               </div>
@@ -1637,7 +1725,10 @@ onUnmounted(() => {
                 </div>
                 <div class="border-t border-current/10 pt-4 text-[#141413] dark:text-[#faf9f5]">
                   <div class="flex items-center gap-3">
-                    <strong class="preserve-input-format break-words text-xl" v-html="cleanHtml(currentWord.word)" />
+                    <strong
+                      class="preserve-input-format break-words text-xl"
+                      v-html="cleanHtml(currentWord.word)"
+                    />
                     <span
                       v-if="currentWord.phonetic"
                       class="text-sm text-[#888]"
@@ -1662,10 +1753,16 @@ onUnmounted(() => {
                     </button>
                   </div>
                   <div class="mt-4 space-y-4">
-                    <div class="preserve-input-format break-words" v-html="cleanHtml(currentWord.meaning)" />
+                    <div
+                      class="preserve-input-format break-words"
+                      v-html="cleanHtml(currentWord.meaning)"
+                    />
                     <div v-if="currentWord.details">
                       <h3 class="mb-1 text-xs font-bold text-[#888]">答案后详解</h3>
-                      <div class="answer-details preserve-input-format break-words text-sm leading-7" v-html="cleanHtml(currentWord.details)" />
+                      <div
+                        class="answer-details preserve-input-format break-words text-sm leading-7"
+                        v-html="cleanHtml(currentWord.details)"
+                      />
                     </div>
                     <div v-if="currentWord.exampleEn">
                       <h3 class="mb-1 text-xs font-bold text-[#888]">英语例句</h3>
@@ -1683,7 +1780,10 @@ onUnmounted(() => {
                     </div>
                     <div v-if="currentWord.note">
                       <h3 class="mb-1 text-xs font-bold text-[#888]">注释</h3>
-                      <div class="preserve-input-format break-words leading-7" v-html="cleanHtml(currentWord.note)" />
+                      <div
+                        class="preserve-input-format break-words leading-7"
+                        v-html="cleanHtml(currentWord.note)"
+                      />
                     </div>
                   </div>
                 </div>
@@ -1693,7 +1793,8 @@ onUnmounted(() => {
                 class="mt-4 flex items-center justify-center gap-2 rounded-[8px] border border-[#d97757]/40 bg-[#fdf0e8] px-4 py-2.5 text-sm font-semibold text-[#a85335] dark:bg-[#2e2018] dark:text-[#f0c4a8]"
               >
                 按
-                <kbd class="rounded border border-current/30 bg-white/70 px-2 py-0.5 font-mono dark:bg-black/20"
+                <kbd
+                  class="rounded border border-current/30 bg-white/70 px-2 py-0.5 font-mono dark:bg-black/20"
                   >Enter ↵</kbd
                 >
                 进入下一题
@@ -1709,10 +1810,21 @@ onUnmounted(() => {
           </div>
         </div>
         <div v-if="view === 'learn'" class="mt-5 flex items-center justify-between gap-3">
-          <button class="rounded-[8px] border border-[#ddd] px-5 py-2.5 text-[#777] disabled:opacity-40 dark:border-[#444]" :disabled="currentIndex <= 0" @click="previousWord">
+          <button
+            class="rounded-[8px] border border-[#ddd] px-5 py-2.5 text-[#777] disabled:opacity-40 dark:border-[#444]"
+            :disabled="currentIndex <= 0"
+            @click="previousWord"
+          >
             上一个
           </button>
-          <span class="hidden text-sm font-semibold text-[#a85335] sm:block">按 <kbd class="rounded border border-[#d97757]/30 bg-[#fdf0e8] px-2 py-0.5 font-mono dark:bg-[#2e2018]">Enter ↵</kbd> 下一词</span>
+          <span class="hidden text-sm font-semibold text-[#a85335] sm:block"
+            >按
+            <kbd
+              class="rounded border border-[#d97757]/30 bg-[#fdf0e8] px-2 py-0.5 font-mono dark:bg-[#2e2018]"
+              >Enter ↵</kbd
+            >
+            下一词</span
+          >
           <button class="rounded-[8px] bg-[#d97757] px-6 py-2.5 text-white" @click="nextWord">
             下一个 · Enter ↵
           </button>
@@ -1793,7 +1905,9 @@ onUnmounted(() => {
         <p class="mt-2 text-sm leading-6 text-[#777] dark:text-[#aaa]">
           支持对齐表格，也支持“术语 + 释义 + 例句 + 解析”的知识卡片；词性会自动保存为标签。
         </p>
-        <p class="mt-1 rounded-[8px] bg-[#f5f4ef] px-3 py-2 font-mono text-xs leading-5 text-[#777] dark:bg-[#252523]">
+        <p
+          class="mt-1 rounded-[8px] bg-[#f5f4ef] px-3 py-2 font-mono text-xs leading-5 text-[#777] dark:bg-[#252523]"
+        >
           SELECT<br />释义：查询数据<br />例句：SELECT * FROM materials;<br />解析：* 表示所有字段。
         </p>
         <label class="mt-5 block text-sm">
@@ -1819,15 +1933,24 @@ onUnmounted(() => {
         <div class="mt-4 grid gap-3 sm:grid-cols-3">
           <label class="text-sm">
             <span class="mb-1 block text-xs text-[#777]">释义字段别名</span>
-            <input v-model="textImportMeaningLabels" class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]" />
+            <input
+              v-model="textImportMeaningLabels"
+              class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]"
+            />
           </label>
           <label class="text-sm">
             <span class="mb-1 block text-xs text-[#777]">例句字段别名</span>
-            <input v-model="textImportExampleLabels" class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]" />
+            <input
+              v-model="textImportExampleLabels"
+              class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]"
+            />
           </label>
           <label class="text-sm">
             <span class="mb-1 block text-xs text-[#777]">解析字段别名</span>
-            <input v-model="textImportDetailsLabels" class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]" />
+            <input
+              v-model="textImportDetailsLabels"
+              class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]"
+            />
           </label>
         </div>
         <label class="mt-4 block text-sm">
@@ -1848,13 +1971,18 @@ onUnmounted(() => {
             :disabled="busy"
           />
         </label>
-        <div class="mt-4 rounded-[8px] bg-[#f3f6ef] px-3 py-3 text-sm text-[#52633e] dark:bg-[#20251c] dark:text-[#c8d7b5]">
+        <div
+          class="mt-4 rounded-[8px] bg-[#f3f6ef] px-3 py-3 text-sm text-[#52633e] dark:bg-[#20251c] dark:text-[#c8d7b5]"
+        >
           已识别 {{ textImportPreview.length }} 个有效单词
-          <span v-if="textImportTargetId === '__new__'">，将新建词库“{{ textImportName || '未命名词库' }}”</span>
+          <span v-if="textImportTargetId === '__new__'"
+            >，将新建词库“{{ textImportName || '未命名词库' }}”</span
+          >
           <span v-else>，将追加到“{{ textImportTarget?.name || '未选择词库' }}”</span>
           <ul v-if="textImportPreview.length" class="mt-2 space-y-1 text-xs">
             <li v-for="item in textImportPreview.slice(0, 5)" :key="item.word">
-              {{ item.word }} <span v-if="item.tags.length">{{ item.tags.join(' ') }}</span> · {{ item.meaning }}
+              {{ item.word }} <span v-if="item.tags.length">{{ item.tags.join(' ') }}</span> ·
+              {{ item.meaning }}
             </li>
           </ul>
         </div>
@@ -1868,7 +1996,11 @@ onUnmounted(() => {
           </button>
           <button
             class="rounded-[8px] bg-[#d97757] px-5 py-2 text-sm text-white disabled:opacity-50"
-            :disabled="busy || !textImportPreview.length || (textImportTargetId === '__new__' && !textImportName.trim())"
+            :disabled="
+              busy ||
+              !textImportPreview.length ||
+              (textImportTargetId === '__new__' && !textImportName.trim())
+            "
             @click="confirmTextImport"
           >
             {{ busy ? '正在导入...' : '一键导入' }}
@@ -1896,8 +2028,19 @@ onUnmounted(() => {
           class="mt-5 w-full rounded-[8px] border border-[#ddd] bg-transparent px-4 py-3 outline-none focus:border-[#d97757] dark:border-[#444]"
         />
         <div class="mt-6 flex justify-end gap-2">
-          <button type="button" class="rounded-[8px] px-4 py-2 text-[#777]" @click="newArchiveOpen = false">取消</button>
-          <button class="rounded-[8px] bg-[#d97757] px-5 py-2 text-white disabled:opacity-50" :disabled="busy || !newArchiveName.trim()">{{ busy ? '正在创建...' : '创建' }}</button>
+          <button
+            type="button"
+            class="rounded-[8px] px-4 py-2 text-[#777]"
+            @click="newArchiveOpen = false"
+          >
+            取消
+          </button>
+          <button
+            class="rounded-[8px] bg-[#d97757] px-5 py-2 text-white disabled:opacity-50"
+            :disabled="busy || !newArchiveName.trim()"
+          >
+            {{ busy ? '正在创建...' : '创建' }}
+          </button>
         </div>
       </form>
     </div>
@@ -1913,27 +2056,99 @@ onUnmounted(() => {
       >
         <h2 class="text-lg font-bold">{{ editingWordId ? '编辑单词' : '新增单词' }}</h2>
         <div class="mt-5 grid gap-4 sm:grid-cols-2">
-          <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">英语单词 *</span><input v-model="wordDraft.word" autofocus class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
-          <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">音标</span><input v-model="wordDraft.phonetic" class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
-          <label class="text-sm sm:col-span-2"><span class="mb-1 block text-xs text-[#777]">中文释义 *</span><textarea v-model="wordDraft.meaning" rows="2" class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
-          <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">英语例句</span><textarea v-model="wordDraft.exampleEn" rows="3" class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
-          <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">例句翻译</span><textarea v-model="wordDraft.exampleZh" rows="3" class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
-          <label class="text-sm sm:col-span-2"><span class="mb-1 block text-xs text-[#777]">答案后详解</span><textarea v-model="wordDraft.details" rows="5" class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
-          <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">注释</span><textarea v-model="wordDraft.note" rows="2" class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
-          <label class="text-sm"><span class="mb-1 block text-xs text-[#777]">标签（逗号或空格分隔）</span><input v-model="wordDraft.tags" class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]" /></label>
+          <label class="text-sm"
+            ><span class="mb-1 block text-xs text-[#777]">英语单词 *</span
+            ><input
+              v-model="wordDraft.word"
+              autofocus
+              class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+          /></label>
+          <label class="text-sm"
+            ><span class="mb-1 block text-xs text-[#777]">音标</span
+            ><input
+              v-model="wordDraft.phonetic"
+              class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+          /></label>
+          <label class="text-sm sm:col-span-2"
+            ><span class="mb-1 block text-xs text-[#777]">中文释义 *</span
+            ><textarea
+              v-model="wordDraft.meaning"
+              rows="2"
+              class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+            />
+          </label>
+          <label class="text-sm"
+            ><span class="mb-1 block text-xs text-[#777]">英语例句</span
+            ><textarea
+              v-model="wordDraft.exampleEn"
+              rows="3"
+              class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+            />
+          </label>
+          <label class="text-sm"
+            ><span class="mb-1 block text-xs text-[#777]">例句翻译</span
+            ><textarea
+              v-model="wordDraft.exampleZh"
+              rows="3"
+              class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+            />
+          </label>
+          <label class="text-sm sm:col-span-2"
+            ><span class="mb-1 block text-xs text-[#777]">答案后详解</span
+            ><textarea
+              v-model="wordDraft.details"
+              rows="5"
+              class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+            />
+          </label>
+          <label class="text-sm"
+            ><span class="mb-1 block text-xs text-[#777]">注释</span
+            ><textarea
+              v-model="wordDraft.note"
+              rows="2"
+              class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+            />
+          </label>
+          <label class="text-sm"
+            ><span class="mb-1 block text-xs text-[#777]">标签（逗号或空格分隔）</span
+            ><input
+              v-model="wordDraft.tags"
+              class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+          /></label>
         </div>
         <div class="mt-6 flex justify-end gap-2">
-          <button type="button" class="rounded-[8px] px-4 py-2 text-[#777]" @click="addWordOpen = false; editingWordId = null">取消</button>
-          <button class="rounded-[8px] bg-[#788c5d] px-5 py-2 text-white disabled:opacity-50" :disabled="!wordDraft.word.trim() || !wordDraft.meaning.trim()">{{ editingWordId ? '保存修改' : '保存单词' }}</button>
+          <button type="button" class="rounded-[8px] px-4 py-2 text-[#777]" @click="closeAddWord">
+            取消
+          </button>
+          <button
+            class="rounded-[8px] bg-[#788c5d] px-5 py-2 text-white disabled:opacity-50"
+            :disabled="!wordDraft.word.trim() || !wordDraft.meaning.trim()"
+          >
+            {{ editingWordId ? '保存修改' : '保存单词' }}
+          </button>
         </div>
       </form>
     </div>
 
-    <div v-if="deleteWordOpen && deletingWord" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" @click.self="deleteWordOpen = false">
-      <div class="w-full max-w-sm rounded-[8px] bg-white p-6 text-[#141413] shadow-xl dark:bg-[#1e1e1c] dark:text-[#faf9f5]">
+    <div
+      v-if="deleteWordOpen && deletingWord"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+      @click.self="deleteWordOpen = false"
+    >
+      <div
+        class="w-full max-w-sm rounded-[8px] bg-white p-6 text-[#141413] shadow-xl dark:bg-[#1e1e1c] dark:text-[#faf9f5]"
+      >
         <h2 class="text-lg font-bold">删除单词？</h2>
-        <p class="mt-3 text-sm text-[#777]">“{{ plainText(deletingWord.word) }}”将从当前词库和学习计划中移除。</p>
-        <div class="mt-6 flex justify-end gap-2"><button class="rounded-[8px] px-4 py-2 text-[#777]" @click="deleteWordOpen = false">取消</button><button class="rounded-[8px] bg-red-600 px-5 py-2 text-white" @click="confirmDeleteWord">删除</button></div>
+        <p class="mt-3 text-sm text-[#777]">
+          “{{ plainText(deletingWord.word) }}”将从当前词库和学习计划中移除。
+        </p>
+        <div class="mt-6 flex justify-end gap-2">
+          <button class="rounded-[8px] px-4 py-2 text-[#777]" @click="deleteWordOpen = false">
+            取消</button
+          ><button class="rounded-[8px] bg-red-600 px-5 py-2 text-white" @click="confirmDeleteWord">
+            删除
+          </button>
+        </div>
       </div>
     </div>
 

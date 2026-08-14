@@ -32,6 +32,21 @@ export interface Notebook {
   updatedAt: number
 }
 
+/**
+ * Shared material for a one-to-many question set. Individual questions remain
+ * NoteEntry records so each one can keep its own answer and SRS progress.
+ */
+export interface QuestionGroup {
+  id: string
+  notebookId: string
+  title: string
+  material: string
+  // Shared annotations belong to the material, not to any individual sub-question.
+  drawings?: Record<string, string>
+  createdAt: number
+  updatedAt: number
+}
+
 export interface NoteEntry {
   id: string
   notebookId: string
@@ -45,6 +60,9 @@ export interface NoteEntry {
   sortOrder?: number
   createdAt: number
   updatedAt: number
+  // Normalized one-to-many relationship. Missing means a standalone question.
+  groupId?: string
+  subQuestionOrder?: number
   // SRS fields
   reviewCount?: number
   consecutivePasses?: number
@@ -53,7 +71,7 @@ export interface NoteEntry {
   interval?: number
   lastReviewDate?: number
   nextReviewDate?: number
-  // Canvas drawings (per-field data URLs)
+  // Canvas drawings (per-field relative image paths; legacy data URLs are migrated on desktop)
   drawings?: Record<string, string>
   // 归属的知识库；未设置则默认 'notes'
   kbId?: string

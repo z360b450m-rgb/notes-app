@@ -1,5 +1,5 @@
 import { ref, computed, type Ref, type ComputedRef } from 'vue'
-import type { NoteEntry } from '@/types'
+import type { NoteEntry, QuestionGroup } from '@/types'
 import { MASTERY_LEVEL_DEFS, getMasteryLevel } from '@/composables/useStats'
 
 export type SortKey = 'updatedAt' | 'createdAt' | 'subject' | 'title' | 'custom' | 'shuffle'
@@ -31,7 +31,10 @@ export interface FilterState {
 // 纯业务逻辑。学科/标签/掌握程度筛选、关键词搜索、多维度排序
 // 均在此实现。FilterState 返回值类型必须向后兼容。
 // ===================================================================
-export function useFilter(entries: Ref<NoteEntry[]>): FilterState {
+export function useFilter(
+  entries: Ref<NoteEntry[]>,
+  questionGroups?: Ref<QuestionGroup[]>,
+): FilterState {
   const activeSubject = ref('__all__')
   const activeTag = ref<string | null>(null)
   const activeSource = ref<string | null>(null)
@@ -71,13 +74,17 @@ export function useFilter(entries: Ref<NoteEntry[]>): FilterState {
 
     if (searchQuery.value.trim()) {
       const q = searchQuery.value.trim().toLowerCase()
+      const materialByGroupId = new Map(
+        (questionGroups?.value || []).map((group) => [group.id, group.material.toLowerCase()]),
+      )
       list = list.filter(
         (e) =>
           (e.question || '').toLowerCase().includes(q) ||
           (e.wrongAnswer || '').toLowerCase().includes(q) ||
           (e.correctAnswer || '').toLowerCase().includes(q) ||
           (e.subject || '').toLowerCase().includes(q) ||
-          (e.source || '').toLowerCase().includes(q),
+          (e.source || '').toLowerCase().includes(q) ||
+          (e.groupId ? materialByGroupId.get(e.groupId)?.includes(q) : false),
       )
     }
 

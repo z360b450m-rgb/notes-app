@@ -1,0 +1,2 @@
+# Keep the browser-test runner isolated from the application's Node dependencies.
+playwright>=1.50,<2

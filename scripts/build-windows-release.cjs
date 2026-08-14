@@ -8,7 +8,8 @@ const electronDist = path.join(projectRoot, 'node_modules', 'electron', 'dist')
 const builderCache = path.join(projectRoot, '.electron-builder-cache')
 const builderBinariesMirror = 'https://npmmirror.com/mirrors/electron-builder-binaries/'
 const target = process.argv[2] === 'installer' ? 'nsis' : 'dir'
-const releaseName = target === 'nsis' ? `cuotiben-${pkg.version}-installer` : `cuotiben-${pkg.version}`
+const releaseName =
+  target === 'nsis' ? `cuotiben-${pkg.version}-installer` : `cuotiben-${pkg.version}`
 const outputDir = path.join('dist-electron', 'releases', releaseName)
 
 function run(command, args, extraEnv = {}) {
@@ -33,7 +34,9 @@ run(
     target,
     `--config.electronDist=${electronDist}`,
     `--config.directories.output=${outputDir}`,
-    '--config.win.signAndEditExecutable=false',
+    // Keep Windows resource editing enabled so the configured app icon and
+    // version metadata are embedded; disable only Authenticode signing.
+    '--config.win.signExecutable=false',
   ],
   {
     NODE_OPTIONS: '--use-system-ca',

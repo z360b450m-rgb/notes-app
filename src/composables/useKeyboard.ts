@@ -25,18 +25,19 @@ interface KeyboardActions {
 export function useKeyboard(actions: KeyboardActions) {
   function handler(e: KeyboardEvent) {
     const ctrl = e.ctrlKey || e.metaKey
+    const key = e.getModifierState('CapsLock') && e.key.length === 1 ? e.key.toLowerCase() : e.key
 
-    if (ctrl && e.key === 'n') {
+    if (ctrl && key === 'n') {
       e.preventDefault()
       actions.onCreate()
       return
     }
-    if (ctrl && e.key === 's') {
+    if (ctrl && key === 's') {
       e.preventDefault()
       actions.onSave()
       return
     }
-    if (ctrl && e.key === 'r') {
+    if (ctrl && key === 'r') {
       e.preventDefault()
       actions.onToggleReveal()
       return
@@ -60,12 +61,12 @@ export function useKeyboard(actions: KeyboardActions) {
 
     // Drawing undo/redo
     if (actions.drawingEnabled?.value) {
-      if (ctrl && e.key === 'z') {
+      if (ctrl && key === 'z') {
         e.preventDefault()
         actions.onUndo?.()
         return
       }
-      if (ctrl && e.key === 'y') {
+      if (ctrl && key === 'y') {
         e.preventDefault()
         actions.onRedo?.()
         return
@@ -74,7 +75,7 @@ export function useKeyboard(actions: KeyboardActions) {
 
     // S/D to navigate prev/next (edit mode, not typing)
     if (actions.mode?.value === 'edit' && !actions.drawingEnabled?.value) {
-      if (e.key === 's' && !ctrl) {
+      if (key === 's' && !ctrl) {
         const el = document.activeElement
         if (!el || !(el as HTMLElement).isContentEditable) {
           const tag = (el as HTMLElement)?.tagName
@@ -85,7 +86,7 @@ export function useKeyboard(actions: KeyboardActions) {
           }
         }
       }
-      if (e.key === 'd' && !ctrl) {
+      if (key === 'd' && !ctrl) {
         const el = document.activeElement
         if (!el || !(el as HTMLElement).isContentEditable) {
           const tag = (el as HTMLElement)?.tagName

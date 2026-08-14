@@ -7,21 +7,19 @@ import { migrateFromIndexedDB } from './services/db'
 import { useFilter } from './composables/useFilter'
 import type { SortKey, SortDir } from './composables/useFilter'
 import { useMetaStore } from './composables/useMetaStore'
-import { useReview, type ReviewOptions } from './composables/useReview'
+import { useReview } from './composables/useReview'
 import { useReviewSettings } from './composables/useReviewSettings'
 import { useNotebooks } from './composables/useNotebooks'
 import type { NoteEntry } from '@/types'
-import type { VocabularyMistake } from '@/plugins/english-vocabulary/types'
 import { useDrawing } from './composables/useDrawing'
-import { useBackup } from './composables/useBackup'
 import { useExport } from './composables/useExport'
 import { useStats } from './composables/useStats'
 import { useKeyboard } from './composables/useKeyboard'
 import { useDarkMode } from './composables/useDarkMode'
-import { countMultipleChoiceEntries, parsePastedText } from './utils/parsePastedText'
-import { parsePdfFile } from './utils/parsePdf'
-import type { PdfParseProgress } from './utils/parsePdf'
-import { db, setCurrentNotebookId } from './services/db'
+import { useBatchActionsFeature } from './features/batch/useBatchActionsFeature'
+import { useImportFeature } from './features/import/useImportFeature'
+import { usePluginLaunchFeature } from './features/plugins/usePluginLaunchFeature'
+import { useReviewSetupFeature } from './features/review/useReviewSetupFeature'
 import Workspace from './components/Workspace.vue'
 import NotebookMenu from './components/NotebookMenu.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
@@ -29,14 +27,27 @@ import PdfReviewPanel from './components/PdfReviewPanel.vue'
 import ImportOptionsModal from './components/ImportOptionsModal.vue'
 import AppToast from './components/AppToast.vue'
 import { ENGLISH_VOCABULARY_PLUGIN_ID } from './plugins/english-vocabulary/manifest'
-import { notebookPlugins, getNotebookPlugin } from './plugins/registry'
-import { notebookPluginService } from './plugins/service'
+import { notebookPlugins } from './plugins/registry'
 import PluginManager from './plugins/PluginManager.vue'
 
 const {
+  notebooks,
+  activeId: activeNotebookId,
+  activeNotebook,
+  selectNotebook,
+  loadNotebooks,
+  restoreLastNotebook,
+  clearLastNotebook,
+} = useNotebooks()
+const showNotebookMenu = ref(true)
+
+const {
   entries,
+  questionGroups,
   activeId,
   activeEntry,
+  activeGroup,
+  activeGroupEntries,
   answersHidden,
   isDirty,
   selectedIds,
@@ -44,6 +55,8 @@ const {
   loadEntries,
   checkCrashRecovery,
   createEntry,
+  enableQuestionGroup,
+  addSubQuestion,
   loadEntry,
   markDirty,
   saveEntry,
@@ -73,18 +86,7 @@ const {
   removeSubjectFromEntries,
   removeTagFromEntries,
   removeSourceFromEntries,
-} = useEntries()
-
-const {
-  notebooks,
-  activeId: activeNotebookId,
-  activeNotebook,
-  selectNotebook,
-  loadNotebooks,
-  restoreLastNotebook,
-  clearLastNotebook,
-} = useNotebooks()
-const showNotebookMenu = ref(true)
+} = useEntries(() => activeNotebookId.value ?? '')
 
 const {
   activeSubject,
@@ -105,7 +107,7 @@ const {
   setMastery,
   setSearch,
   setSort,
-} = useFilter(notebookEntries)
+} = useFilter(notebookEntries, questionGroups)
 
 const {
   allSubjects,
@@ -142,7 +144,7 @@ const {
   exitReview,
   dismissSummary,
   loadLogs,
-} = useReview(notebookEntries, showToast, () => activeNotebookId.value ?? '')
+} = useReview(notebookEntries, () => activeNotebookId.value ?? '', showToast)
 
 useReviewSettings()
 
@@ -171,33 +173,12 @@ const {
   setStoredDrawing,
 } = useDrawing(markDirty)
 
-const { exportData, importData, importModalVisible, handleImportOption } = useBackup(
-  () => notebookEntries.value,
-  () => activeNotebookId.value ?? '',
-  loadEntries,
-  showToast,
-)
-
-async function handleImportArchive() {
-  await importData()
-  await loadNotebooks()
-  setSubject('')
-  setTag(null)
-  setSearch('')
-}
 const { exportPDF } = useExport(showToast)
 const { isDark, toggleDark } = useDarkMode()
 
-const stats = useStats(notebookEntries)
+const stats = useStats(notebookEntries, () => activeNotebookId.value ?? '')
 const statsOpen = ref(false)
 const settingsOpen = ref(false)
-const installedPlugins = ref<Awaited<ReturnType<typeof notebookPluginService.listInstalled>>>([])
-const pluginManagerOpen = ref(false)
-const activePluginId = ref<string | null>(null)
-const activePlugin = computed(() =>
-  activePluginId.value ? getNotebookPlugin(activePluginId.value) : null,
-)
-const installedPluginIds = computed(() => installedPlugins.value.map((item) => item.pluginId))
 const isElectron = computed(() => typeof window !== 'undefined' && !!window.electronAPI)
 
 // Unsaved changes flow
@@ -205,47 +186,115 @@ const showUnsavedModal = ref(false)
 const pendingEntryId = ref<string | null>(null)
 const pendingAction = ref<'select' | 'create' | 'review' | null>(null)
 const pendingSubject = ref<string>('')
-const pendingForceReview = ref(false)
-const showReviewSetup = ref(false)
-const reviewScope = ref<'due' | 'all'>('due')
-const reviewTags = ref<string[]>([])
-const reviewSubjects = ref<string[]>([])
-const reviewRandom = ref(true)
-const reviewLimit = ref<number | null>(null)
 
-const reviewCandidateCount = computed(() => {
-  let pool =
-    reviewScope.value === 'all'
-      ? notebookEntries.value
-      : notebookEntries.value.filter(
-          (entry) => !entry.nextReviewDate || entry.nextReviewDate <= Date.now(),
-        )
-  if (reviewTags.value.length) {
-    pool = pool.filter((entry) => reviewTags.value.some((tag) => entry.tags.includes(tag)))
-  }
-  if (reviewSubjects.value.length) {
-    pool = pool.filter((entry) => reviewSubjects.value.includes(entry.subject))
-  }
-  return reviewLimit.value && reviewLimit.value > 0
-    ? Math.min(pool.length, reviewLimit.value)
-    : pool.length
+const {
+  showBatchDeleteConfirm,
+  handleBatchDelete,
+  confirmBatchDelete,
+  cancelBatchDelete,
+  handleBatchTag,
+  handleBatchExport,
+} = useBatchActionsFeature({
+  selectedIds,
+  selectedCount,
+  batchDelete,
+  batchTag,
+  batchExport,
+  showToast,
+})
+
+const {
+  exportData,
+  importModalVisible,
+  handleImportOption,
+  handleImportArchive,
+  showBatchImport,
+  batchImportText,
+  batchImportLoading,
+  batchImportSubject,
+  batchImportSource,
+  batchImportTags,
+  batchImportPreview,
+  batchImportChoiceCount,
+  handleOpenBatchImport,
+  handleConfirmBatchImport,
+  showPdfImport,
+  pdfFile,
+  pdfImportLoading,
+  pdfProgress,
+  pdfParsedPreview,
+  pdfError,
+  showPdfReview,
+  handleOpenPdfImport,
+  handlePdfFileSelected,
+  handleConfirmPdfReview,
+  handleCancelPdfReview,
+} = useImportFeature({
+  entries: notebookEntries,
+  questionGroups,
+  activeNotebookId,
+  loadEntries,
+  loadNotebooks,
+  showToast,
+  resetFilters: () => {
+    setSubject('')
+    setTag(null)
+    setSearch('')
+  },
+})
+
+const {
+  installedPlugins,
+  pluginManagerOpen,
+  activePluginId,
+  activePlugin,
+  installedPluginIds,
+  loadInstalledPlugins,
+  resetPluginLaunch,
+  installPlugin,
+  uninstallPlugin,
+  openPlugin,
+  archiveVocabularyMistake,
+} = usePluginLaunchFeature({
+  activeNotebookId,
+  entries: notebookEntries,
+  loadEntries,
+  showToast,
+})
+
+const {
+  showReviewSetup,
+  reviewScope,
+  reviewTags,
+  reviewSubjects,
+  reviewRandom,
+  reviewLimit,
+  reviewCandidateCount,
+  handleStartReview,
+  doStartReview,
+  toggleReviewTag,
+  toggleReviewSubject,
+  beginConfiguredReview,
+} = useReviewSetupFeature({
+  entries: notebookEntries,
+  startReview,
+  showToast,
+  runAfterDirtyCheck: (action) => checkDirtyThen(action, 'review'),
 })
 
 async function handleEnterNotebook(id: string) {
   selectNotebook(id)
-  setCurrentNotebookId(id)
   showNotebookMenu.value = false
   await loadEntries()
   await loadLogs()
-  installedPlugins.value = await notebookPluginService.listInstalled(id)
+  await loadInstalledPlugins(id)
 }
 
 function handleReturnToMenu() {
   clearLastNotebook()
   showNotebookMenu.value = true
   activeId.value = null
-  activePluginId.value = null
-  installedPlugins.value = []
+  resetPluginLaunch()
 }
 
 onMounted(async () => {
@@ -254,6 +303,7 @@ onMounted(async () => {
   // Migrate from IndexedDB to file storage on first launch in Electron
   const migrated = await migrateFromIndexedDB()
   if (migrated > 0) {
+    await loadNotebooks()
     await loadEntries()
     await loadLogs()
     showToast(`已迁移 ${migrated} 条错题到本地文件`)
@@ -269,105 +319,12 @@ onMounted(async () => {
   const lastId = restoreLastNotebook()
   if (lastId && notebooks.value.some((n) => n.id === lastId)) {
     selectNotebook(lastId)
-    setCurrentNotebookId(lastId)
     showNotebookMenu.value = false
     await loadEntries()
     await loadLogs()
-    installedPlugins.value = await notebookPluginService.listInstalled(lastId)
+    await loadInstalledPlugins(lastId)
   }
 })
-
-async function installPlugin(pluginId: string) {
-  if (!activeNotebookId.value) return
-  try {
-    await notebookPluginService.install(activeNotebookId.value, pluginId)
-    installedPlugins.value = await notebookPluginService.listInstalled(activeNotebookId.value)
-    pluginManagerOpen.value = false
-    activePluginId.value = pluginId
-    showToast(`${getNotebookPlugin(pluginId)?.name ?? '插件'}已安装到当前错题本`)
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : '插件安装失败，请重试')
-  }
-}
-
-async function uninstallPlugin(pluginId: string, deleteData: boolean) {
-  if (!activeNotebookId.value) return
-  try {
-    await notebookPluginService.uninstall(activeNotebookId.value, pluginId, deleteData)
-    installedPlugins.value = await notebookPluginService.listInstalled(activeNotebookId.value)
-    if (activePluginId.value === pluginId) activePluginId.value = null
-    showToast(`${getNotebookPlugin(pluginId)?.name ?? '插件'}已卸载`)
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : '插件卸载失败，请重试')
-  }
-}
-
-function openPlugin(pluginId: string) {
-  if (installedPluginIds.value.includes(pluginId)) activePluginId.value = pluginId
-}
-
-async function archiveVocabularyMistake(mistake: VocabularyMistake) {
-  if (!activeNotebookId.value) return
-  const now = Date.now()
-  const existing = notebookEntries.value.find(
-    (entry) =>
-      entry.pluginSource?.pluginId === 'english-vocabulary' &&
-      entry.pluginSource.archiveId === mistake.archiveId &&
-      entry.pluginSource.wordId === mistake.word.id &&
-      entry.pluginSource.reviewMode === mistake.mode,
-  )
-  const modeLabel = mistake.mode === 'zh-to-en' ? '中译英' : '英译中'
-  const packageTag = `Anki:${mistake.archiveName}`
-  const question =
-    mistake.mode === 'zh-to-en'
-      ? mistake.word.meaning
-      : [mistake.word.word, mistake.word.phonetic].filter(Boolean).join('<br>')
-  const correctAnswer = [
-    mistake.mode === 'zh-to-en' ? mistake.word.word : mistake.word.meaning,
-    mistake.word.exampleEn ? `<strong>英语例句</strong><br>${mistake.word.exampleEn}` : '',
-    mistake.word.exampleZh ? `<strong>例句翻译</strong><br>${mistake.word.exampleZh}` : '',
-    mistake.word.note ? `<strong>注释</strong><br>${mistake.word.note}` : '',
-  ]
-    .filter(Boolean)
-    .join('<br><br>')
-
-  const entry: NoteEntry = existing ?? {
-    id: `vocab_${mistake.archiveId}_${mistake.word.id}_${mistake.mode}`,
-    notebookId: activeNotebookId.value,
-    title: `[${modeLabel}] ${mistake.word.word}`,
-    question,
-    wrongAnswer: mistake.answer,
-    correctAnswer,
-    subject: '英语',
-    source: mistake.archiveName,
-    tags: ['英语单词', modeLabel, packageTag],
-    masteryLevel: 0,
-    consecutivePasses: 0,
-    nextReviewDate: now,
-    createdAt: now,
-    updatedAt: now,
-  }
-  entry.title = `[${modeLabel}] ${mistake.word.word}`
-  entry.question = question
-  entry.wrongAnswer = mistake.answer
-  entry.correctAnswer = correctAnswer
-  entry.subject = '英语'
-  entry.source = mistake.archiveName
-  entry.tags = Array.from(new Set([...entry.tags, '英语单词', modeLabel, packageTag]))
-  entry.nextReviewDate = now
-  entry.updatedAt = now
-  entry.pluginSource = {
-    pluginId: 'english-vocabulary',
-    archiveId: mistake.archiveId,
-    wordId: mistake.word.id,
-    reviewMode: mistake.mode,
-    wrongCount: (existing?.pluginSource?.wrongCount ?? 0) + 1,
-    lastWrongAt: now,
-  }
-  await db.put(JSON.parse(JSON.stringify(entry)))
-  await loadEntries()
-  showToast(existing ? '已更新对应英语错题' : '已归档到当前错题本')
-}
 
 // Crash protection: save snapshot before unload
 function onBeforeUnload() {
@@ -440,194 +397,22 @@ function doCreate() {
   createEntry(pendingSubject.value || undefined)
 }
 
+async function handleEnableQuestionGroup() {
+  if (isDirty.value) await handleSave()
+  await enableQuestionGroup()
+}
+
+async function handleAddSubQuestion() {
+  if (isDirty.value) await handleSave()
+  await addSubQuestion()
+}
+
 function handleDelete() {
   openDeleteModal()
 }
 
 function handleConfirmDelete() {
   deleteCurrent()
-}
-
-// Batch import
-const showBatchImport = ref(false)
-const batchImportText = ref('')
-const batchImportLoading = ref(false)
-const batchImportSubject = ref('未分类')
-const batchImportSource = ref('批量导入')
-const batchImportTags = ref('')
-const batchImportPreview = computed(() =>
-  parsePastedText(batchImportText.value, activeNotebookId.value || '__preview__'),
-)
-const batchImportChoiceCount = computed(() => countMultipleChoiceEntries(batchImportPreview.value))
-
-function handleOpenBatchImport() {
-  batchImportText.value = ''
-  batchImportSubject.value = '未分类'
-  batchImportSource.value = '批量导入'
-  batchImportTags.value = ''
-  showBatchImport.value = true
-}
-
-async function handleConfirmBatchImport() {
-  if (!batchImportText.value.trim() || !activeNotebookId.value) return
-
-  batchImportLoading.value = true
-  try {
-    const parsed = parsePastedText(batchImportText.value, activeNotebookId.value)
-    if (parsed.length === 0) {
-      showToast('没有识别到题目，请确认每题以 1.、2)、（3）等序号开头')
-      return
-    }
-    const tags = batchImportTags.value
-      .split(/[,，]/)
-      .map((tag) => tag.trim())
-      .filter(Boolean)
-    const now = Date.now()
-    for (const [index, item] of parsed.entries()) {
-      const entry = {
-        id: 'cuoti_' + now + '_' + Math.random().toString(36).slice(2, 7) + '_' + index,
-        notebookId: activeNotebookId.value,
-        title: (item.question || '').slice(0, 40),
-        question: item.question || '',
-        wrongAnswer: item.wrongAnswer || '',
-        correctAnswer: item.correctAnswer || '',
-        subject: batchImportSubject.value.trim() || item.subject || '未分类',
-        source: batchImportSource.value.trim() || item.source || '批量导入',
-        tags: Array.from(new Set([...(item.tags || []), ...tags])),
-        masteryLevel: 0,
-        consecutivePasses: 0,
-        nextReviewDate: 0,
-        createdAt: now + index,
-        updatedAt: now + index,
-      }
-      await db.put(JSON.parse(JSON.stringify(entry)))
-    }
-    await loadEntries()
-    setSubject('')
-    setTag(null)
-    setSearch('')
-    showToast(`已导入 ${parsed.length} 道错题`)
-    showBatchImport.value = false
-  } catch (err) {
-    console.error('Batch import failed:', err)
-    showToast('批量导入失败，请重试')
-  } finally {
-    batchImportLoading.value = false
-  }
-}
-
-// PDF import
-const showPdfImport = ref(false)
-const pdfFile = ref<File | null>(null)
-const pdfImportLoading = ref(false)
-const pdfProgress = ref<PdfParseProgress>({ current: 0, total: 0 })
-const pdfParsedPreview = ref<Partial<NoteEntry>[]>([])
-const pdfError = ref('')
-const showPdfReview = ref(false)
-
-function handleOpenPdfImport() {
-  pdfFile.value = null
-  pdfImportLoading.value = false
-  pdfProgress.value = { current: 0, total: 0 }
-  pdfParsedPreview.value = []
-  pdfError.value = ''
-  showPdfImport.value = true
-}
-
-async function handlePdfFileSelected(file: File) {
-  if (!activeNotebookId.value) return
-
-  pdfFile.value = file
-  pdfImportLoading.value = true
-  pdfError.value = ''
-  pdfParsedPreview.value = []
-
-  try {
-    const parsed = await parsePdfFile(file, activeNotebookId.value, (p) => {
-      pdfProgress.value = p
-    })
-    pdfParsedPreview.value = parsed
-    if (parsed.length === 0) {
-      pdfError.value = '未能从此 PDF 中解析出题目，请确认 PDF 中包含带序号的题目文本。'
-    } else {
-      // Open review panel on success
-      showPdfImport.value = false
-      showPdfReview.value = true
-    }
-  } catch (err: unknown) {
-    pdfError.value =
-      (err instanceof Error ? err.message : undefined) || 'PDF 解析失败，请确认文件格式正确'
-  } finally {
-    pdfImportLoading.value = false
-  }
-}
-
-async function handleConfirmPdfReview(reviewedEntries: Partial<NoteEntry>[]) {
-  if (!activeNotebookId.value || reviewedEntries.length === 0) return
-
-  pdfImportLoading.value = true
-  try {
-    const now = Date.now()
-    for (let i = 0; i < reviewedEntries.length; i++) {
-      const item = reviewedEntries[i]
-      const entry = {
-        id: 'cuoti_' + now + '_' + Math.random().toString(36).slice(2, 7) + '_' + i,
-        notebookId: activeNotebookId.value,
-        title: (item.question || '').replace(/<[^>]*>/g, '').slice(0, 40),
-        question: item.question || '',
-        wrongAnswer: item.wrongAnswer || '',
-        correctAnswer: item.correctAnswer || '',
-        subject: item.subject || '未分类',
-        source: 'PDF导入',
-        tags: item.tags || [],
-        masteryLevel: 0,
-        consecutivePasses: 0,
-        nextReviewDate: 0,
-        createdAt: now + i,
-        updatedAt: now + i,
-      }
-      await db.put(JSON.parse(JSON.stringify(entry)))
-    }
-    await loadEntries()
-    setSubject('')
-    setTag(null)
-    setSearch('')
-    showToast(`已导入 ${reviewedEntries.length} 道错题`)
-    showPdfReview.value = false
-    pdfParsedPreview.value = []
-  } catch (err) {
-    console.error('PDF import failed:', err)
-    showToast('导入失败，请重试')
-  } finally {
-    pdfImportLoading.value = false
-  }
-}
-
-function handleCancelPdfReview() {
-  showPdfReview.value = false
-  pdfParsedPreview.value = []
-}
-
-// Batch actions
-const showBatchDeleteConfirm = ref(false)
-
-function handleBatchDelete() {
-  showBatchDeleteConfirm.value = true
-}
-
-function confirmBatchDelete() {
-  showBatchDeleteConfirm.value = false
-  batchDelete(Array.from(selectedIds.value))
-  showToast(`已删除 ${selectedCount.value} 条错题`)
-}
-
-function cancelBatchDelete() {
-  showBatchDeleteConfirm.value = false
-}
-
-function handleBatchTag(tags: string[]) {
-  batchTag(Array.from(selectedIds.value), tags)
-  showToast(`已为 ${selectedCount.value} 条错题添加标签`)
 }
 
 function handleAddSubject(name: string, global?: boolean) {
@@ -732,10 +517,6 @@ async function handleDeleteSource(name: string) {
   showToast(`来源 "${name}" 已删除`)
 }
 
-function handleBatchExport() {
-  batchExport(Array.from(selectedIds.value))
-}
-
 function handleExportPDF() {
   exportPDF(notebookEntries.value)
 }
@@ -761,57 +542,21 @@ function handleSelectEntry(id: string) {
   loadEntry(id)
 }
 
-function handleStartReview(force = false) {
-  pendingForceReview.value = force
-  checkDirtyThen(() => {
-    openReviewSetup(force)
-  }, 'review')
-}
-
-function openReviewSetup(force = false) {
-  reviewScope.value = force ? 'all' : 'due'
-  reviewTags.value = []
-  reviewSubjects.value = []
-  reviewRandom.value = true
-  reviewLimit.value = null
-  showReviewSetup.value = true
-}
-
-function toggleReviewTag(tag: string) {
-  reviewTags.value = reviewTags.value.includes(tag)
-    ? reviewTags.value.filter((item) => item !== tag)
-    : [...reviewTags.value, tag]
-}
-
-function toggleReviewSubject(subject: string) {
-  reviewSubjects.value = reviewSubjects.value.includes(subject)
-    ? reviewSubjects.value.filter((item) => item !== subject)
-    : [...reviewSubjects.value, subject]
-}
-
-function beginConfiguredReview() {
-  const options: ReviewOptions = {
-    scope: reviewScope.value,
-    tags: reviewTags.value,
-    subjects: reviewSubjects.value,
-    random: reviewRandom.value,
-    limit: reviewLimit.value || undefined,
-  }
-  if (!startReview(options)) {
-    showToast('当前筛选条件下没有可复习的题目')
-    return
-  }
-  showReviewSetup.value = false
-}
-
 function handleMountCanvas(el: HTMLElement, entryId: string, field: string) {
   // Sync previous entry's drawings before switching
   if (currentEntryId.value && currentEntryId.value !== entryId) {
     const oldEntry = entries.value.find((e) => e.id === currentEntryId.value)
     if (oldEntry) {
       const all = captureAllDrawings()
-      if (Object.keys(all).length > 0) {
-        oldEntry.drawings = { ...oldEntry.drawings, ...all }
+      const { material, ...entryDrawings } = all
+      if (Object.keys(entryDrawings).length > 0) {
+        oldEntry.drawings = { ...oldEntry.drawings, ...entryDrawings }
+      }
+      const oldGroup = oldEntry.groupId
+        ? questionGroups.value.find((group) => group.id === oldEntry.groupId)
+        : undefined
+      if (material && oldGroup) {
+        oldGroup.drawings = { ...oldGroup.drawings, material }
       }
     }
   }
@@ -824,6 +569,11 @@ function handleMountCanvas(el: HTMLElement, entryId: string, field: string) {
     for (const [key, url] of Object.entries(entry.drawings)) {
       setStoredDrawing(entryId, key, url)
     }
+  }
+  if (field === 'material' && entry?.groupId) {
+    const group = questionGroups.value.find((item) => item.id === entry.groupId)
+    const materialDrawing = group?.drawings?.material
+    if (materialDrawing) setStoredDrawing(entryId, 'material', materialDrawing)
   }
   // Migrate legacy drawing field
   const legacy = entry as NoteEntry & { drawing?: string }
@@ -840,10 +590,15 @@ function syncDrawingToEntry() {
   if (!entry) return
   try {
     const all = captureAllDrawings()
-    if (Object.keys(all).length > 0) {
-      entry.drawings = { ...entry.drawings, ...all }
+    const { material, ...entryDrawings } = all
+    if (Object.keys(entryDrawings).length > 0) {
+      entry.drawings = { ...entry.drawings, ...entryDrawings }
     } else if (!entry.drawings || Object.keys(entry.drawings).length === 0) {
       delete entry.drawings
+    }
+    if (material && entry.groupId) {
+      const group = questionGroups.value.find((item) => item.id === entry.groupId)
+      if (group) group.drawings = { ...group.drawings, material }
     }
   } catch (err) {
     console.error('syncDrawingToEntry failed', err)
@@ -863,10 +618,6 @@ async function handleSave() {
 function handleBlurSave() {
   syncDrawingToEntry()
   snapshotSave()
-}
-
-function doStartReview() {
-  openReviewSetup(pendingForceReview.value)
 }
 
 function handleExitReview() {
@@ -933,9 +684,12 @@ watch(activeId, (_newId) => {
       key="workspace"
       :notebook-name="activeNotebook?.name ?? ''"
       :entries="notebookEntries"
+      :question-groups="questionGroups"
       :filtered-entries="filteredEntries"
       :active-id="activeId"
       :active-entry="activeEntry"
+      :active-group="activeGroup"
+      :active-group-entries="activeGroupEntries"
       :answers-hidden="answersHidden"
       :is-dirty="isDirty"
       :selected-ids="selectedIds"
@@ -996,6 +750,8 @@ watch(activeId, (_newId) => {
       @set-sort="(key: SortKey, dir?: SortDir) => setSort(key, dir)"
       @reorder="reorderEntries"
       @quick-create="handleCreate"
+      @enable-question-group="handleEnableQuestionGroup"
+      @add-sub-question="handleAddSubQuestion"
       @rename="updateEntryTitle"
       @save="handleSave"
       @mark-dirty="markDirty"
@@ -1010,9 +766,7 @@ watch(activeId, (_newId) => {
       @exit-review="handleExitReview"
       @toggle-mode="mode === 'review' ? handleExitReview() : handleStartReview()"
       @reveal="mode === 'review' ? revealAnswer() : (answersHidden = !answersHidden)"
-      @rate-card="
-        (r: number | string, note: string, outcome) => rateCard(r, note, outcome)
-      "
+      @rate-card="(r: number | string, note: string, outcome) => rateCard(r, note, outcome)"
       @dismiss-summary="dismissSummary"
       @toggle-drawing="toggleDrawing"
       @set-tool="setTool"

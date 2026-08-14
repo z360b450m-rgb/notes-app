@@ -24,6 +24,9 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Dependency vulnerability audit
+        run: npm run audit:dependencies
+
       - name: Format check (Prettier)
         run: npm run format:check
 
