@@ -49,6 +49,7 @@ const log = require('electron-log')
 const AdmZip = require('adm-zip')
 const vocabulary = require('./plugins/english-vocabulary/main.cjs')
 const pluginRegistry = require('./plugins/registry.cjs')
+const summaries = require('./entry-summary.cjs')
 
 log.transports.file.level = 'info'
 log.transports.console.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}'
@@ -58,7 +59,9 @@ process.on('uncaughtException', (error) => {
 })
 
 let mainWindow
+let closeApproved = false
 let dataDir = null
+let storageUserId = null
 let pendingVocabularyImportPath = null
 
 const IMAGE_SCHEME = 'cuotiben-image'
@@ -83,7 +86,7 @@ function getDefaultDataDir() {
   return path.join(app.getPath('documents'), '错题本')
 }
 
-function getDataDir() {
+function getBaseDataDir() {
   if (!dataDir) {
     const configPath = path.join(app.getPath('userData'), 'config.json')
     try {
@@ -101,6 +104,60 @@ function getDataDir() {
   }
   return dataDir
 }
+
+function getDataDir() {
+  const base = getBaseDataDir()
+  return storageUserId ? path.join(base, 'users', storageUserId) : base
+}
+
+// Resolve the account and legacy notebook ownership with the authenticated API.
+// Notebook JSON formats remain unchanged; each account has a separate directory.
+ipcMain.handle('storage:setUser', async (_event, token) => {
+  if (typeof token !== 'string' || !token) throw new Error('Login required')
+  const headers = { Authorization: `Bearer ${token}` }
+  const response = await fetch('http://localhost:8000/api/users/me', {
+    headers,
+    signal: AbortSignal.timeout(5000),
+  })
+  if (!response.ok) throw new Error('Login expired')
+  const user = await response.json()
+  assertSafeId(user.id)
+  storageUserId = user.id
+  const destination = getDataDir()
+  const marker = path.join(destination, '.legacy-migrated')
+  if (fs.existsSync(marker)) return
+  const notebooksResponse = await fetch('http://localhost:8000/api/notebooks', {
+    headers,
+    signal: AbortSignal.timeout(5000),
+  })
+  if (!notebooksResponse.ok) throw new Error('Cannot verify notebook ownership')
+  const remote = await notebooksResponse.json()
+  const ownedIds = new Set(remote.items.map((item) => item.id))
+  const legacyDir = getBaseDataDir()
+  const legacyMetaPath = path.join(legacyDir, 'notebooks.json')
+  fs.mkdirSync(destination, { recursive: true })
+  if (fs.existsSync(legacyMetaPath)) {
+    const legacyNotebooks = JSON.parse(fs.readFileSync(legacyMetaPath, 'utf8'))
+    const current = readNotebooksMeta()
+    for (const notebook of legacyNotebooks.filter((item) => ownedIds.has(item.id))) {
+      assertSafeId(notebook.id)
+      const legacyFile = path.join(legacyDir, `notebook_${notebook.id}.json`)
+      const newFile = getNotebookDataPath(notebook.id)
+      if (fs.existsSync(legacyFile) && !fs.existsSync(newFile)) fs.copyFileSync(legacyFile, newFile)
+      for (const folder of ['images', path.join('plugins', 'english-vocabulary', 'notebooks')]) {
+        const oldFolder = path.join(legacyDir, folder, notebook.id)
+        const newFolder = path.join(destination, folder, notebook.id)
+        if (fs.existsSync(oldFolder) && !fs.existsSync(newFolder)) {
+          fs.mkdirSync(path.dirname(newFolder), { recursive: true })
+          fs.cpSync(oldFolder, newFolder, { recursive: true })
+        }
+      }
+      if (!current.some((item) => item.id === notebook.id)) current.push(notebook)
+    }
+    writeNotebooksMeta(current)
+  }
+  fs.writeFileSync(marker, 'true', 'utf8')
+})
 
 function getImagesDir() {
   return path.join(getDataDir(), 'images')
@@ -304,13 +361,13 @@ function saveConfig() {
 }
 
 function isIndexedDBMigrated() {
-  return readConfig().indexedDBMigrated === true
+  return readConfig().indexedDBMigratedUsers?.[storageUserId] === true
 }
 
 function markIndexedDBMigrated() {
   const configPath = path.join(app.getPath('userData'), 'config.json')
   const cfg = readConfig()
-  cfg.indexedDBMigrated = true
+  cfg.indexedDBMigratedUsers = { ...cfg.indexedDBMigratedUsers, [storageUserId]: true }
   const dir = path.dirname(configPath)
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2), 'utf-8')
@@ -377,6 +434,63 @@ function readNotebookData(notebookId) {
   }
 }
 
+function notebookSummaryPath(notebookId) {
+  assertSafeId(notebookId)
+  return path.join(getDataDir(), `notebook_summary_${notebookId}.json`)
+}
+
+function writeNotebookSummary(notebookId, data) {
+  const entryIds = new Set(data.entries.map((entry) => entry.id))
+  const reviewEvents = new Map()
+  for (const log of data.reviewLogs || []) {
+    if (entryIds.has(log.entryId))
+      reviewEvents.set(log.timestamp, (reviewEvents.get(log.timestamp) || 0) + 1)
+  }
+  const summary = {
+    entries: data.entries.map(summaries.entrySummary),
+    questionGroups: data.questionGroups.map(summaries.groupSummary),
+    reviewEvents: [...reviewEvents],
+    recentReviews: (data.reviewLogs || [])
+      .filter((log) => entryIds.has(log.entryId) && log.timestamp >= Date.now() - 8 * 86400000)
+      .map(({ id, entryId, timestamp }) => ({ id, entryId, timestamp })),
+  }
+  try {
+    const source = fs.statSync(getNotebookDataPath(notebookId))
+    const filePath = notebookSummaryPath(notebookId)
+    fs.writeFileSync(
+      filePath + '.tmp',
+      JSON.stringify({ sourceSize: source.size, sourceTime: source.mtimeMs, ...summary }),
+      'utf8',
+    )
+    fs.renameSync(filePath + '.tmp', filePath)
+  } catch (error) {
+    // The original notebook remains authoritative; this cache can always be rebuilt.
+    log.warn('Cannot update notebook summary cache', error)
+  }
+  return summary
+}
+
+function readNotebookSummary(notebookId) {
+  if (!fs.existsSync(getNotebookDataPath(notebookId)))
+    return { entries: [], questionGroups: [], reviewEvents: [], recentReviews: [] }
+  try {
+    const source = fs.statSync(getNotebookDataPath(notebookId))
+    const cached = JSON.parse(fs.readFileSync(notebookSummaryPath(notebookId), 'utf8'))
+    if (
+      cached.sourceSize === source.size &&
+      cached.sourceTime === source.mtimeMs &&
+      Array.isArray(cached.entries) &&
+      Array.isArray(cached.reviewEvents) &&
+      Array.isArray(cached.recentReviews) &&
+      Array.isArray(cached.questionGroups)
+    )
+      return cached
+  } catch {
+    // First use or an externally changed notebook needs a fresh metadata index.
+  }
+  return writeNotebookSummary(notebookId, readNotebookData(notebookId))
+}
+
 function writeNotebookData(notebookId, data) {
   const dir = getDataDir()
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
@@ -385,6 +499,7 @@ function writeNotebookData(notebookId, data) {
   try {
     fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
     fs.renameSync(tmpPath, filePath)
+    writeNotebookSummary(notebookId, data)
     return true
   } catch (err) {
     log.error(`写入错题本 ${notebookId} 失败`, err)
@@ -524,12 +639,25 @@ ipcMain.handle('storage:getAll', (_e, notebookId) => {
   return readNotebookData(notebookId).entries
 })
 
+ipcMain.handle('storage:getEntrySummaries', (_e, notebookId) => {
+  return readNotebookSummary(notebookId).entries
+})
+
+ipcMain.handle('storage:searchEntryIds', (_e, notebookId, query) => {
+  return summaries.searchEntryIds(readNotebookData(notebookId), query)
+})
+
+ipcMain.handle('storage:getQuestionGroupSummaries', (_e, notebookId) => {
+  return readNotebookSummary(notebookId).questionGroups
+})
+
 ipcMain.handle('storage:get', (_e, notebookId, id) => {
   const nbData = readNotebookData(notebookId)
   return nbData.entries.find((e) => e.id === id) ?? null
 })
 
 ipcMain.handle('storage:put', (_e, entry) => {
+  if (entry.isSummary) throw new Error('Cannot save an unloaded entry')
   if (!entry.notebookId) return
   const storedEntry = externalizeEntryImages(entry)
   const nbData = readNotebookData(storedEntry.notebookId)
@@ -561,6 +689,7 @@ ipcMain.handle('storage:getQuestionGroup', (_e, notebookId, groupId) => {
 })
 
 ipcMain.handle('storage:putQuestionGroup', (_e, group) => {
+  if (group.isSummary) throw new Error('Cannot save an unloaded group')
   if (!group?.notebookId) return
   const storedGroup = externalizeQuestionGroupImages(group)
   const nbData = readNotebookData(storedGroup.notebookId)
@@ -579,6 +708,7 @@ ipcMain.handle('storage:deleteQuestionGroup', (_e, notebookId, groupId) => {
 })
 
 ipcMain.handle('storage:putSnapshot', (_e, notebookId, snapshot) => {
+  if (snapshot.data?.isSummary) throw new Error('Cannot snapshot an unloaded entry')
   const nbData = readNotebookData(notebookId)
   const storedSnapshot = {
     ...snapshot,
@@ -643,6 +773,17 @@ ipcMain.handle('storage:getAllNotebooks', () => {
   return readNotebooksMeta()
 })
 
+ipcMain.handle('storage:getNotebookOverview', (_event, notebookIds, includeLocalState) => {
+  const owned = new Set(readNotebooksMeta().map((notebook) => notebook.id))
+  const ids = [...new Set(notebookIds)].filter((id) => owned.has(id))
+  return require('./notebook-overview.cjs').notebookOverview(
+    ids,
+    readNotebookSummary,
+    Date.now(),
+    includeLocalState,
+  )
+})
+
 ipcMain.handle('storage:putNotebook', (_e, notebook) => {
   const notebooks = readNotebooksMeta()
   const idx = notebooks.findIndex((n) => n.id === notebook.id)
@@ -660,8 +801,10 @@ ipcMain.handle('storage:deleteNotebook', (_e, id) => {
 
   // Remove the per-notebook data file
   const nbPath = getNotebookDataPath(id)
+  const summaryPath = notebookSummaryPath(id)
   try {
     if (fs.existsSync(nbPath)) fs.unlinkSync(nbPath)
+    if (fs.existsSync(summaryPath)) fs.unlinkSync(summaryPath)
   } catch (err) {
     log.warn(`删除笔记本文件失败: ${nbPath}`, err)
   }
@@ -688,7 +831,8 @@ ipcMain.handle('storage:setDataDir', async () => {
     properties: ['openDirectory'],
   })
   if (result.canceled || result.filePaths.length === 0) return getDataDir()
-  const newDir = result.filePaths[0]
+  const newBaseDir = result.filePaths[0]
+  const newDir = storageUserId ? path.join(newBaseDir, 'users', storageUserId) : newBaseDir
   const oldDir = getDataDir()
 
   // Copy all notebook data files to new directory
@@ -715,7 +859,7 @@ ipcMain.handle('storage:setDataDir', async () => {
     log.warn('复制数据文件到新目录失败', err)
   }
 
-  dataDir = newDir
+  dataDir = newBaseDir
   saveConfig()
   return newDir
 })
@@ -1223,6 +1367,12 @@ ipcMain.handle('vocabulary:readAudio', (_event, notebookId, archiveId, filename)
   vocabulary.readAudio(getVocabularyRoot(notebookId), archiveId, filename),
 )
 
+ipcMain.handle('app:confirmClose', (event) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return
+  closeApproved = true
+  mainWindow.close()
+})
+
 function createWindow() {
   // Run one-time migration from old single-file format
   try {
@@ -1239,7 +1389,7 @@ function createWindow() {
     minHeight: 600,
     title: '错题本',
     show: false,
-    icon: path.join(__dirname, '..', 'dist', 'icon-512.png'),
+    icon: path.join(__dirname, '..', 'dist', 'renote-r-tile-512.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -1247,7 +1397,7 @@ function createWindow() {
     },
   })
 
-  mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
+  mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'app', 'index.html'))
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
@@ -1255,8 +1405,15 @@ function createWindow() {
 
   Menu.setApplicationMenu(null)
 
+  mainWindow.on('close', (event) => {
+    if (closeApproved) return
+    event.preventDefault()
+    mainWindow.webContents.send('app:requestClose')
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
+    closeApproved = false
   })
 }
 

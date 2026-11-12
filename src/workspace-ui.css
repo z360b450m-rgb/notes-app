@@ -1,0 +1,424 @@
+/* A quiet navigation surface and a brighter reading surface define the workspace.
+   These rules are scoped to the study workspace; menus and other screens keep their theme. */
+#app .workspace-ui {
+  --workspace-muted: #706c62;
+  --workspace-border: #dedbd2;
+  background: var(--neo-surface);
+}
+.dark #app .workspace-ui {
+  --workspace-muted: #b8b0a3;
+  --workspace-border: #49443c;
+}
+#app .workspace-ui button:not(.btn-primary):not([style*='background']) {
+  box-shadow: none !important;
+}
+#app .workspace-ui .main-button-tray {
+  margin: 0;
+  padding: 10px 18px;
+  border-radius: 0;
+  border-bottom: 1px solid var(--workspace-border);
+  background: var(--neo-reading);
+  gap: 10px;
+}
+#app .workspace-ui .workspace-navigation {
+  gap: 4px;
+}
+#app .workspace-ui .main-button-tray .workspace-search {
+  flex: 1 1 220px;
+  min-width: 70px;
+  max-width: 440px;
+  margin-left: auto;
+  border: 1px solid var(--workspace-border);
+  border-radius: 8px;
+  background: var(--neo-surface);
+  box-shadow: none;
+  animation: none;
+  transition: border-color 160ms ease;
+}
+#app .workspace-ui .main-button-tray .workspace-search:focus-within {
+  background-image: none;
+  border-color: var(--neo-accent);
+  animation: none;
+}
+#app .workspace-ui .main-button-tray .btn-primary {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+#app .workspace-body {
+  position: relative;
+}
+#app .workspace-main {
+  container-type: inline-size;
+  background: var(--neo-reading);
+}
+#app .entry-context-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--workspace-border);
+}
+#app .entry-context-title {
+  min-width: 0;
+}
+#app .entry-context-title h1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+#app .entry-context-actions,
+#app .entry-save-status,
+#app .entry-local-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#app .entry-context-actions {
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+#app .entry-save-status {
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--workspace-muted);
+  font-size: 12px;
+}
+#app .save-status-message {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#app .save-status-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #67816b;
+}
+#app .entry-save-status[data-state='dirty'] .save-status-dot {
+  background: var(--neo-accent);
+}
+#app .entry-save-status[data-state='saving'] .save-status-dot {
+  background: transparent;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--workspace-border);
+  border-top-color: var(--neo-accent);
+  animation: workspace-saving 800ms linear infinite;
+}
+#app .entry-save-status[data-state='error'] {
+  color: #b44139;
+}
+.dark #app .entry-save-status[data-state='error'] {
+  color: #f3a69e;
+}
+#app .entry-save-status[data-state='error'] .save-status-dot {
+  background: currentColor;
+}
+#app .entry-save-status button {
+  padding: 4px 9px;
+  min-height: 28px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 6px;
+  color: var(--neo-ink);
+  background: var(--neo-surface);
+  white-space: nowrap;
+}
+#app .entry-local-tools {
+  flex-shrink: 0;
+  gap: 4px;
+  padding-left: 10px;
+  border-left: 1px solid var(--workspace-border);
+}
+#app .entry-local-tools button {
+  display: flex;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--workspace-muted);
+  font-size: 22px;
+}
+#app .entry-local-tools button:is(:hover, [aria-pressed='true']):not(:disabled) {
+  color: var(--neo-accent);
+  background: var(--neo-selected);
+}
+#app .entry-position {
+  color: var(--workspace-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#app .workspace-ui .compact-note-editor {
+  padding: 12px 20px 20px;
+  gap: 10px;
+}
+#app .workspace-ui .editor-layout {
+  background: transparent;
+}
+#app .workspace-ui .compact-note-editor .panel-module {
+  border-color: var(--workspace-border);
+  border-radius: 10px;
+  box-shadow: none;
+}
+#app .workspace-ui .compact-note-editor .panel-module > :first-child,
+#app .workspace-ui .compact-note-editor .panel-label {
+  color: var(--workspace-muted);
+  background: var(--neo-surface);
+}
+#app .workspace-ui .compact-note-editor .panel-body {
+  padding: 18px 20px;
+  line-height: 1.85;
+}
+#app .workspace-ui .compact-note-editor .editor-metadata-row {
+  padding-bottom: 4px;
+  row-gap: 6px;
+}
+#app .workspace-ui .compact-note-editor .metadata-select-trigger {
+  border-radius: 6px;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#app .workspace-ui .sidebar-notebook-row {
+  padding: 12px 12px 0;
+}
+#app .workspace-ui .sidebar-notebook-row > div {
+  margin-bottom: 8px;
+  gap: 4px;
+}
+#app .workspace-ui .sidebar-notebook-row > div > button:first-child {
+  padding: 6px 4px;
+  font-size: 12px;
+}
+#app .workspace-ui .sidebar-filter-toggle {
+  color: var(--workspace-muted);
+}
+#app .workspace-ui .sidebar-filter-content {
+  max-height: 38dvh;
+}
+#app .sidebar-list-heading {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px 4px;
+  font-size: 12px;
+  color: var(--workspace-muted);
+}
+#app .sidebar-list-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--neo-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+#app .sidebar-list-heading > span {
+  flex-shrink: 0;
+}
+#app .sidebar-list-heading button {
+  margin-left: auto;
+  color: var(--neo-accent);
+  font-size: 11px;
+}
+#app .content-compact .sidebar-list-heading,
+#app .content-closing .sidebar-list-heading {
+  display: none;
+}
+#app .workspace-ui .sidebar-action-tray {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  margin: 0 8px 6px;
+  padding: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--workspace-border);
+  border-radius: 0;
+  background: var(--neo-surface);
+  box-shadow: none;
+}
+#app .workspace-ui .sidebar-action-tray :is(.sidebar-action-icon, .sidebar-folder-create) {
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--workspace-muted) !important;
+}
+#app .workspace-ui .entry-item {
+  margin-bottom: 3px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+#app .workspace-ui .entry-item[data-active='true'] {
+  background: var(--neo-selected) !important;
+  box-shadow: none;
+  --tw-ring-color: transparent;
+}
+#app .workspace-ui .entry-source {
+  color: var(--workspace-muted);
+}
+#app .workspace-ui .workspace-empty {
+  padding: 32px;
+  text-align: center;
+  background: var(--neo-reading);
+}
+#app .workspace-empty p {
+  max-width: 360px;
+  color: var(--workspace-muted);
+  line-height: 1.8;
+}
+#app .workspace-empty > div:first-child {
+  width: 64px;
+  height: 64px;
+}
+#app .workspace-empty h2 {
+  font-size: 20px;
+}
+#app .workspace-sidebar-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: rgb(0 0 0 / 15%);
+  border-radius: 0;
+}
+#app .app-toast {
+  background: var(--neo-ink);
+  color: var(--neo-reading);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 15%);
+}
+#app .app-toast button {
+  background: transparent;
+  color: inherit;
+  box-shadow: none !important;
+  padding: 0 2px;
+}
+@keyframes workspace-saving {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Insertion is a small menu; size controls appear only for a selected image. */
+#app .workspace-ui .compact-note-editor .editor-tool-menu-panel button {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--neo-ink);
+  font-size: 12px;
+  font-weight: 400;
+}
+#app .workspace-ui .compact-note-editor .editor-tool-menu-panel button:hover {
+  background: var(--neo-selected);
+  color: var(--neo-accent);
+}
+#app .workspace-ui .compact-note-editor #shared-image-tools {
+  display: block;
+}
+#app .workspace-ui .compact-note-editor #shared-image-tools > div {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+#app .workspace-ui .compact-note-editor #shared-image-tools button {
+  justify-content: flex-start;
+  width: 100%;
+  height: auto;
+  padding: 7px 10px !important;
+}
+#app .workspace-ui .editor-layout-menu-hint {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--workspace-muted);
+  line-height: 1.6;
+}
+@container (max-width: 860px) {
+  #app .entry-context-header {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+  #app .entry-context-actions {
+    flex: 1 1 auto;
+    justify-content: space-between;
+  }
+  #app .workspace-ui .compact-note-editor {
+    padding: 10px 12px 16px;
+  }
+  #app .workspace-ui .compact-note-editor .editor-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+  }
+  #app .workspace-ui .compact-note-editor .panel-module {
+    flex: 0 0 auto !important;
+    min-height: 180px !important;
+    order: var(--panel-order);
+  }
+  #app .workspace-ui .compact-note-editor .editor-layout.answers-collapsed .answer-panel {
+    min-height: 32px !important;
+  }
+  #app .workspace-ui .compact-note-editor .panel-module > .overflow-y-auto {
+    overflow: visible;
+    flex: 0 0 auto;
+  }
+  #app .workspace-ui .compact-note-editor .panel-body {
+    min-height: 140px;
+    padding: 16px;
+  }
+  #app .workspace-ui .compact-note-editor .panel-resizer {
+    display: none;
+  }
+}
+@media (max-width: 1100px) {
+  #app .workspace-ui .sidebar-hover-host {
+    width: 48px;
+    z-index: 40;
+  }
+  #app .workspace-ui .sidebar-hover-host > aside {
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: var(--neo-surface);
+  }
+  #app .workspace-ui .sidebar-hover-host:not(.is-collapsed) > aside {
+    box-shadow: 12px 0 30px rgb(0 0 0 / 12%);
+  }
+}
+@media (max-width: 680px) {
+  #app .workspace-ui .main-button-tray {
+    padding: 8px;
+    gap: 5px;
+  }
+  #app .workspace-ui .main-button-tray button {
+    padding: 5px 8px;
+  }
+  #app .workspace-ui .main-button-tray > .w-px {
+    display: none;
+  }
+  #app .workspace-ui .main-button-tray .workspace-search {
+    flex-basis: 80px;
+  }
+  #app .workspace-ui .main-button-tray .workspace-back-button span {
+    display: none;
+  }
+  #app .entry-save-status {
+    max-width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #app .entry-save-status[data-state='saving'] .save-status-dot {
+    animation: none;
+  }
+}

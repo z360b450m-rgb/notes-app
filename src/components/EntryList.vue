@@ -2,12 +2,13 @@
 // @AI-NOTE: 条目列表组件 —— 条目展示/选择/排序由 useFilter/useEntries
 // Hook 驱动。禁止在此实现筛选/排序逻辑或直接操作存储。
 import { ref, nextTick, computed, onUnmounted } from 'vue'
-import type { NoteEntry } from '@/types'
+import type { NoteEntry, QuestionGroup } from '@/types'
 import type { SortKey } from '@/composables/useFilter'
 import { getMasteryColor } from '@/composables/useStats'
 
 const props = defineProps<{
   entries: NoteEntry[]
+  questionGroups: QuestionGroup[]
   activeId: string | null
   sortKey: SortKey
   selectedIds: Set<string>
@@ -22,6 +23,14 @@ const emit = defineEmits<{
 }>()
 
 const isCustomSort = computed(() => props.sortKey === 'custom')
+const questionGroupNumbers = computed(
+  () =>
+    new Map(
+      [...props.questionGroups]
+        .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+        .map((group, index) => [group.id, index + 1]),
+    ),
+)
 const dragId = ref<string | null>(null)
 const dragOverId = ref<string | null>(null)
 
@@ -85,6 +94,13 @@ function preview(s: string, max: number): string {
 
 function masteryColor(entry: NoteEntry): string {
   return getMasteryColor(entry)
+}
+
+function questionNumber(entry: NoteEntry): string {
+  if (!entry.groupId) return ''
+  const groupNumber = questionGroupNumbers.value.get(entry.groupId)
+  if (!groupNumber) return ''
+  return `${groupNumber}.(${(entry.subQuestionOrder ?? 0) + 1})`
 }
 
 function formatDate(ts: number): string {
@@ -230,8 +246,12 @@ onUnmounted(() => {
   <div
     v-for="(entry, idx) in entries"
     :key="entry.id"
+    data-testid="entry-item"
+    :data-entry-id="entry.id"
+    :data-active="entry.id === activeId ? 'true' : 'false'"
     class="entry-item flex items-center gap-1 mx-2 mb-0.5 px-2.5 py-2.5 cursor-pointer transition-all duration-200 border-l-[3px] select-none rounded-lg"
     :class="{
+      'selection-active': selectedIds.size > 0,
       '!bg-accent-light dark:!bg-accent/20 !border-l-accent shadow-md ring-1 ring-accent/15':
         entry.id === activeId,
       'border-l-accent bg-accent-light/50 dark:bg-accent/10':
@@ -251,8 +271,12 @@ onUnmounted(() => {
     @dragend="onDragEnd"
   >
     <!-- Checkbox -->
-    <div
-      class="flex-shrink-0 flex items-center justify-center w-4 h-4 rounded border-2 transition-all duration-200 ease-out active:scale-90 cursor-pointer"
+    <button
+      type="button"
+      role="checkbox"
+      :aria-checked="selectedIds.has(entry.id)"
+      :aria-label="`选择错题：${entry.title || preview(entry.questionPreview || entry.question, 28) || '无题目'}`"
+      class="entry-selection-checkbox flex-shrink-0 flex items-center justify-center w-4 h-4 rounded border-2 transition-all duration-200 ease-out active:scale-90 cursor-pointer"
       :class="
         selectedIds.has(entry.id)
           ? 'bg-accent border-accent text-white'
@@ -271,7 +295,7 @@ onUnmounted(() => {
       >
         <polyline points="20 6 9 17 4 12" />
       </svg>
-    </div>
+    </button>
 
     <!-- Mastery dot -->
     <span
@@ -303,14 +327,14 @@ onUnmounted(() => {
           :class="{ 'text-accent font-semibold': entry.id === activeId }"
           @dblclick.stop="startRename(entry.id)"
         >
-          {{ entry.title || preview(entry.question, 28) || '无题目' }}
+          {{ entry.title || preview(entry.questionPreview || entry.question, 28) || '无题目' }}
         </span>
         <span
           v-if="formatNextReview(entry.nextReviewDate)"
           class="text-[10px] px-1.5 py-px rounded-full flex-shrink-0 font-medium"
           :class="
             formatNextReview(entry.nextReviewDate)!.urgent
-              ? 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400'
+              ? 'bg-[#f3e5da] text-[#a96545] dark:bg-[#49372c] dark:text-[#e0b08c]'
               : 'bg-gray-100 dark:bg-[#1e1e1c] text-gray-400 dark:text-brand-mid'
           "
         >
@@ -327,21 +351,28 @@ onUnmounted(() => {
         @keydown="onRenameKeydown($event, entry)"
       />
 
-      <div class="text-[11px] text-gray-400 dark:text-brand-mid flex gap-1.5 items-center">
-        <span
-          v-if="entry.subject"
-          class="px-1.5 py-px rounded-sm bg-gray-100 dark:bg-[#1e1e1c] text-[10px]"
-        >
-          {{ entry.subject }}
-        </span>
-        <span
-          v-if="entry.groupId"
-          class="px-1.5 py-px rounded-sm bg-sky-50 dark:bg-sky-500/10 text-sky-500 text-[10px]"
-        >
-          题组 {{ (entry.subQuestionOrder ?? 0) + 1 }}
-        </span>
-        <span>{{ formatDate(entry.updatedAt) }}</span>
-        <span v-if="entry.source" class="opacity-60">{{ entry.source }}</span>
+      <div class="text-[11px] text-gray-400 dark:text-brand-mid flex min-w-0 gap-2 items-center">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          <span
+            v-if="entry.subject"
+            class="entry-topic-tag max-w-full truncate px-1.5 py-px rounded-full text-[10px]"
+            :title="entry.subject"
+          >
+            {{ entry.subject }}
+          </span>
+          <span
+            v-if="questionNumber(entry)"
+            class="px-1.5 py-px rounded-sm bg-sky-50 dark:bg-sky-500/10 text-sky-500 text-[10px]"
+          >
+            {{ questionNumber(entry) }}
+          </span>
+          <span v-if="entry.source" class="entry-source max-w-full truncate" :title="entry.source">{{
+            entry.source
+          }}</span>
+        </div>
+        <span class="ml-auto shrink-0 whitespace-nowrap text-right tabular-nums">{{
+          formatDate(entry.updatedAt)
+        }}</span>
       </div>
     </div>
   </div>

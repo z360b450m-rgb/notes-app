@@ -8,6 +8,7 @@ import { notebookPluginService } from '@/plugins/service'
 interface PluginLaunchFeatureOptions {
   activeNotebookId: Ref<string | null>
   entries: Ref<NoteEntry[]>
+  ensureEntry?: (id: string) => Promise<NoteEntry>
   loadEntries: () => Promise<void>
   showToast: (message: string) => void
 }
@@ -15,6 +16,9 @@ interface PluginLaunchFeatureOptions {
 export function usePluginLaunchFeature(options: PluginLaunchFeatureOptions) {
   const installedPlugins = ref<Awaited<ReturnType<typeof notebookPluginService.listInstalled>>>([])
   const pluginManagerOpen = ref(false)
+  const pendingPluginId = ref<string | null>(null)
+  const pendingPluginOperation = ref<'install' | 'uninstall' | null>(null)
+  const pluginActionError = ref('')
   const activePluginId = ref<string | null>(null)
   const activePlugin = computed(() =>
     activePluginId.value ? getNotebookPlugin(activePluginId.value) : null,
@@ -22,39 +26,59 @@ export function usePluginLaunchFeature(options: PluginLaunchFeatureOptions) {
   const installedPluginIds = computed(() => installedPlugins.value.map((item) => item.pluginId))
 
   async function loadInstalledPlugins(notebookId = options.activeNotebookId.value) {
-    installedPlugins.value = notebookId ? await notebookPluginService.listInstalled(notebookId) : []
+    const installations = notebookId ? await notebookPluginService.listInstalled(notebookId) : []
+    if (notebookId === options.activeNotebookId.value) installedPlugins.value = installations
   }
 
   function resetPluginLaunch() {
     activePluginId.value = null
     installedPlugins.value = []
     pluginManagerOpen.value = false
+    pluginActionError.value = ''
   }
 
   async function installPlugin(pluginId: string) {
     const notebookId = options.activeNotebookId.value
-    if (!notebookId) return
+    if (!notebookId || pendingPluginId.value) return
+    pendingPluginId.value = pluginId
+    pendingPluginOperation.value = 'install'
+    pluginActionError.value = ''
     try {
       await notebookPluginService.install(notebookId, pluginId)
       await loadInstalledPlugins(notebookId)
+      if (notebookId !== options.activeNotebookId.value) return
       pluginManagerOpen.value = false
       activePluginId.value = pluginId
       options.showToast(`${getNotebookPlugin(pluginId)?.name ?? '插件'}已安装到当前错题本`)
     } catch (error) {
-      options.showToast(error instanceof Error ? error.message : '插件安装失败，请重试')
+      if (notebookId !== options.activeNotebookId.value) return
+      pluginActionError.value = error instanceof Error ? error.message : '插件安装失败，请重试'
+      options.showToast(pluginActionError.value)
+    } finally {
+      pendingPluginId.value = null
+      pendingPluginOperation.value = null
     }
   }
 
   async function uninstallPlugin(pluginId: string, deleteData: boolean) {
     const notebookId = options.activeNotebookId.value
-    if (!notebookId) return
+    if (!notebookId || pendingPluginId.value) return
+    pendingPluginId.value = pluginId
+    pendingPluginOperation.value = 'uninstall'
+    pluginActionError.value = ''
     try {
       await notebookPluginService.uninstall(notebookId, pluginId, deleteData)
       await loadInstalledPlugins(notebookId)
+      if (notebookId !== options.activeNotebookId.value) return
       if (activePluginId.value === pluginId) activePluginId.value = null
       options.showToast(`${getNotebookPlugin(pluginId)?.name ?? '插件'}已卸载`)
     } catch (error) {
-      options.showToast(error instanceof Error ? error.message : '插件卸载失败，请重试')
+      if (notebookId !== options.activeNotebookId.value) return
+      pluginActionError.value = error instanceof Error ? error.message : '插件卸载失败，请重试'
+      options.showToast(pluginActionError.value)
+    } finally {
+      pendingPluginId.value = null
+      pendingPluginOperation.value = null
     }
   }
 
@@ -67,13 +91,19 @@ export function usePluginLaunchFeature(options: PluginLaunchFeatureOptions) {
     if (!notebookId) return
 
     const now = Date.now()
-    const existing = options.entries.value.find(
+    let existing = options.entries.value.find(
       (entry) =>
         entry.pluginSource?.pluginId === 'english-vocabulary' &&
         entry.pluginSource.archiveId === mistake.archiveId &&
         entry.pluginSource.wordId === mistake.word.id &&
         entry.pluginSource.reviewMode === mistake.mode,
     )
+    if (existing?.isSummary) {
+      existing = options.ensureEntry
+        ? await options.ensureEntry(existing.id)
+        : await entryRepository.get(notebookId, existing.id)
+      if (!existing || existing.isSummary) throw new Error('原词汇错题暂时无法加载')
+    }
     const modeLabel = mistake.mode === 'zh-to-en' ? '中译英' : '英译中'
     const packageTag = `Anki:${mistake.archiveName}`
     const question =
@@ -130,6 +160,9 @@ export function usePluginLaunchFeature(options: PluginLaunchFeatureOptions) {
   return {
     installedPlugins,
     pluginManagerOpen,
+    pendingPluginId,
+    pendingPluginOperation,
+    pluginActionError,
     activePluginId,
     activePlugin,
     installedPluginIds,

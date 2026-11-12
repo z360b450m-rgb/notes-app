@@ -1,13 +1,12 @@
 import { computed, ref, type Ref } from 'vue'
-import type { NoteEntry, QuestionGroup } from '@/types'
+import type { NoteEntry } from '@/types'
 import { entryRepository } from '@/services/db'
 import { useBackup } from '@/composables/useBackup'
 import { countMultipleChoiceEntries, parsePastedText } from '@/utils/parsePastedText'
-import { parsePdfFile, type PdfParseProgress } from '@/utils/parsePdf'
 
 interface ImportFeatureOptions {
   entries: Ref<NoteEntry[]>
-  questionGroups: Ref<QuestionGroup[]>
+  getFullEntries?: () => Promise<NoteEntry[]>
   activeNotebookId: Ref<string | null>
   loadEntries: () => Promise<void>
   loadNotebooks: () => Promise<void>
@@ -17,10 +16,12 @@ interface ImportFeatureOptions {
 
 export function useImportFeature(options: ImportFeatureOptions) {
   const { exportData, importData, importModalVisible, handleImportOption } = useBackup(
-    () => options.entries.value,
-    () => options.questionGroups.value,
+    () => options.getFullEntries?.() ?? options.entries.value,
     () => options.activeNotebookId.value ?? '',
-    options.loadEntries,
+    async () => {
+      await options.loadNotebooks()
+      await options.loadEntries()
+    },
     options.showToast,
   )
 
@@ -37,17 +38,8 @@ export function useImportFeature(options: ImportFeatureOptions) {
     countMultipleChoiceEntries(batchImportPreview.value),
   )
 
-  const showPdfImport = ref(false)
-  const pdfFile = ref<File | null>(null)
-  const pdfImportLoading = ref(false)
-  const pdfProgress = ref<PdfParseProgress>({ current: 0, total: 0 })
-  const pdfParsedPreview = ref<Partial<NoteEntry>[]>([])
-  const pdfError = ref('')
-  const showPdfReview = ref(false)
-
   async function handleImportArchive() {
     await importData()
-    await options.loadNotebooks()
     options.resetFilters()
   }
 
@@ -106,87 +98,6 @@ export function useImportFeature(options: ImportFeatureOptions) {
     }
   }
 
-  function handleOpenPdfImport() {
-    pdfFile.value = null
-    pdfImportLoading.value = false
-    pdfProgress.value = { current: 0, total: 0 }
-    pdfParsedPreview.value = []
-    pdfError.value = ''
-    showPdfImport.value = true
-  }
-
-  async function handlePdfFileSelected(file: File) {
-    const notebookId = options.activeNotebookId.value
-    if (!notebookId) return
-
-    pdfFile.value = file
-    pdfImportLoading.value = true
-    pdfError.value = ''
-    pdfParsedPreview.value = []
-
-    try {
-      const parsed = await parsePdfFile(file, notebookId, (progress) => {
-        pdfProgress.value = progress
-      })
-      pdfParsedPreview.value = parsed
-      if (parsed.length === 0) {
-        pdfError.value = '未能从此 PDF 中解析出题目，请确认 PDF 中包含带序号的题目文本。'
-      } else {
-        showPdfImport.value = false
-        showPdfReview.value = true
-      }
-    } catch (error: unknown) {
-      pdfError.value =
-        (error instanceof Error ? error.message : undefined) || 'PDF 解析失败，请确认文件格式正确'
-    } finally {
-      pdfImportLoading.value = false
-    }
-  }
-
-  async function handleConfirmPdfReview(reviewedEntries: Partial<NoteEntry>[]) {
-    const notebookId = options.activeNotebookId.value
-    if (!notebookId || reviewedEntries.length === 0) return
-
-    pdfImportLoading.value = true
-    try {
-      const now = Date.now()
-      for (const [index, item] of reviewedEntries.entries()) {
-        const entry: NoteEntry = {
-          id: 'cuoti_' + now + '_' + Math.random().toString(36).slice(2, 7) + '_' + index,
-          notebookId,
-          title: (item.question || '').replace(/<[^>]*>/g, '').slice(0, 40),
-          question: item.question || '',
-          wrongAnswer: item.wrongAnswer || '',
-          correctAnswer: item.correctAnswer || '',
-          subject: item.subject || '未分类',
-          source: 'PDF导入',
-          tags: item.tags || [],
-          masteryLevel: 0,
-          consecutivePasses: 0,
-          nextReviewDate: 0,
-          createdAt: now + index,
-          updatedAt: now + index,
-        }
-        await entryRepository.put(notebookId, JSON.parse(JSON.stringify(entry)))
-      }
-      await options.loadEntries()
-      options.resetFilters()
-      options.showToast(`已导入 ${reviewedEntries.length} 道错题`)
-      showPdfReview.value = false
-      pdfParsedPreview.value = []
-    } catch (error) {
-      console.error('PDF import failed:', error)
-      options.showToast('导入失败，请重试')
-    } finally {
-      pdfImportLoading.value = false
-    }
-  }
-
-  function handleCancelPdfReview() {
-    showPdfReview.value = false
-    pdfParsedPreview.value = []
-  }
-
   return {
     exportData,
     importModalVisible,
@@ -202,16 +113,5 @@ export function useImportFeature(options: ImportFeatureOptions) {
     batchImportChoiceCount,
     handleOpenBatchImport,
     handleConfirmBatchImport,
-    showPdfImport,
-    pdfFile,
-    pdfImportLoading,
-    pdfProgress,
-    pdfParsedPreview,
-    pdfError,
-    showPdfReview,
-    handleOpenPdfImport,
-    handlePdfFileSelected,
-    handleConfirmPdfReview,
-    handleCancelPdfReview,
   }
 }

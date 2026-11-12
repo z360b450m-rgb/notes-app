@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import SidebarAnchorIcon from './SidebarAnchorIcon.vue'
+import FilterItemRow from './FilterItemRow.vue'
+import { useInlineReveal } from '@/composables/useInlineReveal'
+const { enterReveal, leaveReveal, clearReveal } = useInlineReveal()
+
 // @AI-NOTE: 学科筛选组件 —— 筛选状态由 useFilter Hook 管理。
 // 禁止在此实现筛选逻辑或直接操作存储。
 import { ref, nextTick } from 'vue'
@@ -19,7 +24,7 @@ const emit = defineEmits<{
   'delete-subject': [name: string]
 }>()
 
-const sectionOpen = ref(true)
+const sectionOpen = ref(false)
 const addingSubject = ref(false)
 const newSubjectName = ref('')
 const newSubjectGlobal = ref(false)
@@ -30,7 +35,7 @@ function startAddSubject() {
   addingSubject.value = true
   newSubjectName.value = ''
   newSubjectGlobal.value = false
-  nextTick(() => newSubjectInput.value?.focus())
+  nextTick(() => newSubjectInput.value?.focus({ preventScroll: true }))
 }
 
 function confirmAddSubject() {
@@ -47,6 +52,9 @@ function cancelAddSubject() {
 const editingName = ref<string | null>(null)
 const editValue = ref('')
 const editInput = ref<HTMLInputElement | null>(null)
+function setEditInput(el: unknown) {
+  editInput.value = el instanceof HTMLInputElement ? el : null
+}
 
 function startEdit(name: string) {
   editingName.value = name
@@ -88,11 +96,13 @@ function cancelDelete() {
 <template>
   <!-- @AI-VIEW: DOM 可自由重构。样式仅限 Tailwind CSS 工具类。严禁内联 style 或自定义 CSS。 -->
   <div class="sidebar-section mb-3.5">
-    <div class="flex items-center justify-between mb-1.5">
+    <div class="filter-section-header flex items-center justify-between mb-1.5">
       <button
-        class="flex items-center gap-1.5 text-base font-semibold uppercase tracking-[0.5px] text-gray-500 dark:text-brand-mid hover:text-gray-700 dark:hover:text-brand-light-gray transition-colors"
+        class="min-h-10 px-3 py-2 rounded-xl flex items-center gap-2 text-base font-semibold uppercase tracking-[0.5px] text-gray-500 dark:text-brand-mid hover:text-gray-700 dark:hover:text-brand-light-gray transition-colors"
+        :aria-expanded="sectionOpen"
         @click="sectionOpen = !sectionOpen"
       >
+        <SidebarAnchorIcon kind="subject" />
         学科
         <svg
           width="13"
@@ -129,7 +139,7 @@ function cancelDelete() {
     <div class="section-collapse" :class="{ active: sectionOpen }">
       <div class="section-collapse-inner">
         <!-- Inline input for new subject -->
-        <div v-if="addingSubject" class="mb-1.5 space-y-1.5">
+        <Transition :css="false" @enter="enterReveal" @leave="leaveReveal" @enter-cancelled="clearReveal" @leave-cancelled="clearReveal"><div v-if="addingSubject" class="mb-1.5 space-y-1.5">
           <input
             ref="newSubjectInput"
             v-model="newSubjectName"
@@ -163,28 +173,16 @@ function cancelDelete() {
             />
             应用于所有错题本
           </label>
-        </div>
-        <div class="flex flex-wrap gap-1">
-          <button
-            class="subject-chip text-sm px-2.5 py-1 rounded-md border border-transparent bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:border-gray-200 dark:hover:border-[#2e2e2c] hover:text-accent whitespace-nowrap"
-            :class="{ '!bg-accent !text-white !border-accent': activeSubject === '__all__' }"
-            @click="emit('filter', '__all__')"
-          >
-            全部 ({{ allCount }})
-          </button>
-          <button
-            class="subject-chip text-sm px-2.5 py-1 rounded-md border border-transparent bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray cursor-pointer transition-all duration-200 ease-out active:scale-95 hover:border-gray-200 dark:hover:border-[#2e2e2c] hover:text-accent whitespace-nowrap"
-            :class="{ '!bg-accent !text-white !border-accent': activeSubject === '__none__' }"
-            @click="emit('filter', '__none__')"
-          >
-            未分类 ({{ noneCount }})
-          </button>
+        </div></Transition>
+        <div class="filter-item-list">
+          <FilterItemRow label="全部" :count="allCount" :selected="activeSubject === '__all__'" @select="emit('filter', '__all__')" />
+          <FilterItemRow label="未分类" :count="noneCount" :selected="activeSubject === '__none__'" @select="emit('filter', '__none__')" />
 
           <template v-for="subject in allSubjects" :key="subject">
             <!-- Inline edit mode -->
             <span v-if="editingName === subject" class="inline-flex items-center gap-1">
               <input
-                :ref="(el) => (editInput.value = el as HTMLInputElement | null)"
+                :ref="setEditInput"
                 v-model="editValue"
                 type="text"
                 class="text-sm px-3 py-1.5 rounded-md border border-accent bg-white dark:bg-[#141413] outline-none text-gray-800 dark:text-brand-light w-28 focus:ring-2 focus:ring-accent/20 transition-all"
@@ -262,65 +260,8 @@ function cancelDelete() {
               </button>
             </span>
 
-            <!-- Normal chip: parent = clip only; left filled, right ghost -->
-            <span
-              v-else
-              class="inline-flex items-center rounded-md border border-transparent group-hover:border-gray-200 dark:group-hover:border-[#2e2e2c] overflow-hidden group transition-all duration-200 ease-out"
-              :class="{ '!border-accent': activeSubject === subject }"
-            >
-              <button
-                class="subject-chip text-sm px-2.5 py-1 cursor-pointer border-none transition-all duration-200 ease-out active:scale-95 bg-white dark:bg-[#141413] text-gray-600 dark:text-brand-light-gray hover:brightness-95"
-                :class="{ '!bg-accent !text-white': activeSubject === subject }"
-                @click="emit('filter', subject)"
-              >
-                {{ subject }} ({{ subjectMap[subject] || 0 }})
-              </button>
-              <button
-                class="text-sm px-1.5 py-1 border-none cursor-pointer transition-all duration-200 ease-out active:scale-95 bg-white dark:bg-[#141413] text-gray-400 dark:text-brand-mid hover:text-accent"
-                :class="{ '!bg-accent !text-white': activeSubject === subject }"
-                title="在此学科下新建错题"
-                @click.stop="emit('quickCreate', subject)"
-              >
-                +
-              </button>
-              <button
-                class="py-1.5 leading-tight bg-transparent transition-opacity duration-300 ease-out opacity-0 group-hover:opacity-100 px-1.5 text-gray-400 dark:text-brand-mid hover:bg-black/5 dark:hover:bg-white/10 hover:text-accent pointer-events-none group-hover:pointer-events-auto"
-                title="重命名学科"
-                @click.stop="startEdit(subject)"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                  class="flex-shrink-0"
-                >
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
-              </button>
-              <button
-                class="py-1.5 leading-tight bg-transparent transition-opacity duration-300 ease-out opacity-0 group-hover:opacity-100 px-1.5 text-gray-400 dark:text-brand-mid hover:bg-red-50 dark:hover:bg-red-950/50 hover:text-red-500 pointer-events-none group-hover:pointer-events-auto"
-                title="删除学科"
-                @click.stop="startDelete(subject)"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                  class="flex-shrink-0"
-                >
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </span>
-          </template>
+            <FilterItemRow v-else :label="subject" :count="subjectMap[subject] || 0" :selected="activeSubject === subject" manageable quick-create @quick-create="emit('quickCreate', subject)" @select="emit('filter', subject)" @edit="startEdit(subject)" @delete="startDelete(subject)" />
+</template>
         </div>
       </div>
     </div>

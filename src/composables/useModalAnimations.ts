@@ -16,9 +16,18 @@ function resolveOverlay(el: Element): HTMLElement | null {
 }
 
 export function useModalAnimations() {
+  const running = new WeakMap<Element, gsap.core.Timeline>()
+  const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
   function enterModal(el: Element, done: () => void) {
     const overlay = resolveOverlay(el)
     const dialog = el.querySelector('.modal-dialog') as HTMLElement | null
+    running.get(el)?.kill()
+    if (reducedMotion()) {
+      if (overlay) gsap.set(overlay, { opacity: 1 })
+      if (dialog) gsap.set(dialog, { opacity: 1, scale: 1, y: 0 })
+      done()
+      return
+    }
 
     const finish = safeDone(done)
     const timeout = setTimeout(finish, 1000)
@@ -36,6 +45,7 @@ export function useModalAnimations() {
           finish()
         },
       })
+      running.set(el, tl)
 
       if (overlay) {
         tl.fromTo(overlay, { opacity: 0 }, { opacity: 1, duration: 0.18, ease: 'power2.out' }, 0)
@@ -44,9 +54,9 @@ export function useModalAnimations() {
       if (dialog) {
         tl.fromTo(
           dialog,
-          { opacity: 0, scale: 0.92, y: 12 },
-          { opacity: 1, scale: 1, y: 0, duration: 0.3, ease: 'back.out(1.5)' },
-          overlay ? 0.04 : 0,
+          { opacity: 0, scale: 0.98, y: 8 },
+          { opacity: 1, scale: 1, y: 0, duration: 0.22, ease: 'power2.out' },
+          0,
         )
       }
     } catch {
@@ -58,6 +68,11 @@ export function useModalAnimations() {
   function leaveModal(el: Element, done: () => void) {
     const overlay = resolveOverlay(el)
     const dialog = el.querySelector('.modal-dialog') as HTMLElement | null
+    running.get(el)?.kill()
+    if (reducedMotion()) {
+      done()
+      return
+    }
 
     const finish = safeDone(done)
     const timeout = setTimeout(finish, 500)
@@ -75,9 +90,10 @@ export function useModalAnimations() {
           finish()
         },
       })
+      running.set(el, tl)
 
       if (dialog) {
-        tl.to(dialog, { opacity: 0, scale: 0.95, duration: 0.15, ease: 'power2.in' }, 0)
+        tl.to(dialog, { opacity: 0, scale: 0.98, y: 8, duration: 0.14, ease: 'power2.in' }, 0)
       }
       if (overlay) {
         tl.to(overlay, { opacity: 0, duration: 0.18, ease: 'power2.in' }, 0)

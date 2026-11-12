@@ -5,6 +5,7 @@ interface ExtrasStore {
   subjects: string[]
   tags: string[]
   sources: string[]
+  folders: string[]
 }
 
 const GLOBAL_KEY = 'meta_extras_v2__global'
@@ -18,19 +19,19 @@ function loadExtras(key: string): ExtrasStore {
     const raw = localStorage.getItem(key)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (
-        parsed &&
-        Array.isArray(parsed.subjects) &&
-        Array.isArray(parsed.tags) &&
-        Array.isArray(parsed.sources)
-      ) {
-        return parsed
+      if (parsed && Array.isArray(parsed.subjects) && Array.isArray(parsed.tags)) {
+        return {
+          subjects: parsed.subjects,
+          tags: parsed.tags,
+          sources: Array.isArray(parsed.sources) ? parsed.sources : [],
+          folders: Array.isArray(parsed.folders) ? parsed.folders : [],
+        }
       }
     }
   } catch {
     /* ignore corrupt data */
   }
-  return { subjects: [], tags: [], sources: [] }
+  return { subjects: [], tags: [], sources: [], folders: [] }
 }
 
 function saveExtras(key: string, store: ExtrasStore) {
@@ -49,6 +50,7 @@ export interface MetaStore {
   allSubjects: ComputedRef<string[]>
   allTags: ComputedRef<string[]>
   allSources: ComputedRef<string[]>
+  allFolders: ComputedRef<string[]>
   addSubject: (name: string, global?: boolean) => void
   removeSubject: (name: string) => void
   renameSubject: (oldName: string, newName: string) => void
@@ -58,6 +60,9 @@ export interface MetaStore {
   addSource: (name: string, global?: boolean) => void
   removeSource: (name: string) => void
   renameSource: (oldName: string, newName: string) => void
+  addFolder: (name: string) => void
+  removeFolder: (name: string) => void
+  renameFolder: (oldName: string, newName: string) => void
 }
 
 export function useMetaStore(entries: Ref<NoteEntry[]>, getNotebookId: () => string): MetaStore {
@@ -100,6 +105,13 @@ export function useMetaStore(entries: Ref<NoteEntry[]>, getNotebookId: () => str
       ...entries.value.map((e) => e.source).filter(Boolean),
       ...extrasStore.value.sources,
       ...globalExtras.value.sources,
+    ]),
+  )
+
+  const allFolders = computed(() =>
+    uniqSorted([
+      ...entries.value.map((e) => e.folder || '').filter(Boolean),
+      ...extrasStore.value.folders,
     ]),
   )
 
@@ -262,10 +274,43 @@ export function useMetaStore(entries: Ref<NoteEntry[]>, getNotebookId: () => str
     }
   }
 
+  // Folders are notebook-local by design.
+  function addFolder(name: string) {
+    const trimmed = name.trim()
+    if (!trimmed || extrasStore.value.folders.includes(trimmed)) return
+    extrasStore.value = {
+      ...extrasStore.value,
+      folders: [...extrasStore.value.folders, trimmed],
+    }
+    persist()
+  }
+
+  function removeFolder(name: string) {
+    if (!extrasStore.value.folders.includes(name)) return
+    extrasStore.value = {
+      ...extrasStore.value,
+      folders: extrasStore.value.folders.filter((folder) => folder !== name),
+    }
+    persist()
+  }
+
+  function renameFolder(oldName: string, newName: string) {
+    const trimmed = newName.trim()
+    if (!trimmed || trimmed === oldName) return
+    const folders = extrasStore.value.folders
+    const withoutOld = folders.filter((folder) => folder !== oldName)
+    extrasStore.value = {
+      ...extrasStore.value,
+      folders: withoutOld.includes(trimmed) ? withoutOld : [...withoutOld, trimmed],
+    }
+    persist()
+  }
+
   return {
     allSubjects,
     allTags,
     allSources,
+    allFolders,
     addSubject,
     removeSubject,
     renameSubject,
@@ -275,5 +320,8 @@ export function useMetaStore(entries: Ref<NoteEntry[]>, getNotebookId: () => str
     addSource,
     removeSource,
     renameSource,
+    addFolder,
+    removeFolder,
+    renameFolder,
   }
 }

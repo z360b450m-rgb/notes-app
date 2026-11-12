@@ -16,6 +16,9 @@ interface CanvasState {
   canvas: HTMLCanvasElement
   ctx: CanvasRenderingContext2D
   container: HTMLElement
+  field: string
+  entryId: string | null
+  loadVersion: number
   undoStack: string[]
   redoStack: string[]
   ro: ResizeObserver | null
@@ -44,7 +47,9 @@ export interface DrawingState {
   mountCanvas: (container: HTMLElement, field: string) => void
   captureDrawing: (field: string) => string | null
   captureAllDrawings: () => Record<string, string>
+  consumeAllDrawings: () => Record<string, string>
   setStoredDrawing: (entryId: string, field: string, source: string) => void
+  resetDrawingSession: () => void
   setCanvasParent: (el: HTMLElement | null) => void
 }
 
@@ -92,10 +97,21 @@ export function useDrawing(onChange?: () => void): DrawingState {
     updateHistoryFlags()
   }
 
-  function restoreSnapshot(state: CanvasState, dataUrl: string): Promise<void> {
+  function restoreSnapshot(
+    state: CanvasState,
+    dataUrl: string,
+    expectedLoadVersion?: number,
+  ): Promise<void> {
     return new Promise((resolve) => {
       const img = new Image()
       img.onload = () => {
+        if (
+          expectedLoadVersion !== undefined &&
+          (state.loadVersion !== expectedLoadVersion || !state.canvas.isConnected)
+        ) {
+          resolve()
+          return
+        }
         state.ctx.save()
         state.ctx.setTransform(1, 0, 0, 1, 0, 0)
         state.ctx.clearRect(0, 0, state.canvas.width, state.canvas.height)
@@ -113,7 +129,9 @@ export function useDrawing(onChange?: () => void): DrawingState {
     if (!s || s.undoStack.length === 0) return
     s.redoStack.push(s.canvas.toDataURL())
     const prev = s.undoStack.pop()!
-    await restoreSnapshot(s, prev)
+    const loadVersion = ++s.loadVersion
+    await restoreSnapshot(s, prev, loadVersion)
+    if (s.entryId) dirtyFields.add(`${s.entryId}:${s.field}`)
     updateHistoryFlags()
     onChange?.()
   }
@@ -123,7 +141,9 @@ export function useDrawing(onChange?: () => void): DrawingState {
     if (!s || s.redoStack.length === 0) return
     s.undoStack.push(s.canvas.toDataURL())
     const next = s.redoStack.pop()!
-    await restoreSnapshot(s, next)
+    const loadVersion = ++s.loadVersion
+    await restoreSnapshot(s, next, loadVersion)
+    if (s.entryId) dirtyFields.add(`${s.entryId}:${s.field}`)
     updateHistoryFlags()
     onChange?.()
   }
@@ -162,14 +182,14 @@ export function useDrawing(onChange?: () => void): DrawingState {
   }
 
   function onStart(state: CanvasState, e: MouseEvent | Touch) {
+    // A user stroke owns the canvas from this point onward. Any older image
+    // decode that completes later must not overwrite it.
+    state.loadVersion++
     saveSnapshot(state)
     drawing = true
-    for (const [k, v] of canvases) {
-      if (v === state) {
-        activeField = k
-        dirtyFields.add(k)
-        break
-      }
+    activeField = state.field
+    if (state.entryId) {
+      dirtyFields.add(`${state.entryId}:${state.field}`)
     }
     updateHistoryFlags()
     const { x, y } = getPos(state, e)
@@ -263,6 +283,9 @@ export function useDrawing(onChange?: () => void): DrawingState {
       canvas,
       ctx,
       container,
+      field,
+      entryId: null,
+      loadVersion: 0,
       undoStack: [],
       redoStack: [],
       ro: null,
@@ -293,6 +316,7 @@ export function useDrawing(onChange?: () => void): DrawingState {
   function unmountField(field: string) {
     const existing = canvases.get(field)
     if (existing) {
+      existing.loadVersion++
       existing.canvas.remove()
       if (existing._resizeHandler) {
         window.removeEventListener('resize', existing._resizeHandler)
@@ -314,10 +338,9 @@ export function useDrawing(onChange?: () => void): DrawingState {
     const state = canvases.get(field)
     if (!state) return
 
-    if (currentEntryId.value !== entryId) {
-      dirtyFields.clear()
-    }
     currentEntryId.value = entryId
+    state.entryId = entryId
+    const loadVersion = ++state.loadVersion
 
     const key = `${entryId}:${field}`
 
@@ -331,8 +354,7 @@ export function useDrawing(onChange?: () => void): DrawingState {
     state.ctx.clearRect(0, 0, state.canvas.width / dpr, state.canvas.height / dpr)
 
     if (drawingStore.has(key)) {
-      restoreSnapshot(state, drawingStore.get(key)!)
-      dirtyFields.add(field)
+      void restoreSnapshot(state, drawingStore.get(key)!, loadVersion)
     }
   }
 
@@ -348,30 +370,63 @@ export function useDrawing(onChange?: () => void): DrawingState {
     s.ctx.clearRect(0, 0, s.canvas.width / dpr, s.canvas.height / dpr)
     // Keep the field dirty so persistence replaces an existing annotation
     // with the now-empty canvas instead of restoring it on the next load.
-    dirtyFields.add(activeField)
+    if (s.entryId) dirtyFields.add(`${s.entryId}:${s.field}`)
     onChange?.()
   }
 
   function captureDrawing(field: string): string | null {
-    if (!dirtyFields.has(field)) return null
     const state = canvases.get(field)
+    if (!state?.entryId || !dirtyFields.has(`${state.entryId}:${field}`)) return null
     if (!state || state.canvas.width === 0 || state.canvas.height === 0) return null
     return state.canvas.toDataURL()
   }
 
   function captureAllDrawings(): Record<string, string> {
     const result: Record<string, string> = {}
-    dirtyFields.forEach((field) => {
-      const state = canvases.get(field)
-      if (state && state.canvas.width > 0 && state.canvas.height > 0) {
+    const ownerId = currentEntryId.value
+    if (!ownerId) return result
+    canvases.forEach((state, field) => {
+      if (
+        state.entryId === ownerId &&
+        dirtyFields.has(`${ownerId}:${field}`) &&
+        state.canvas.width > 0 &&
+        state.canvas.height > 0
+      ) {
         result[field] = state.canvas.toDataURL()
       }
     })
     return result
   }
 
+  function consumeAllDrawings(): Record<string, string> {
+    const ownerId = currentEntryId.value
+    const result = captureAllDrawings()
+    if (ownerId) {
+      Object.keys(result).forEach((field) => dirtyFields.delete(`${ownerId}:${field}`))
+    }
+    return result
+  }
+
   function setStoredDrawing(entryId: string, field: string, source: string) {
     drawingStore.set(`${entryId}:${field}`, toDisplayImageUrl(source))
+  }
+
+  function resetDrawingSession() {
+    drawing = false
+    activeField = ''
+    dirtyFields.clear()
+    drawingStore.clear()
+    currentEntryId.value = null
+    canvases.forEach((state) => {
+      state.entryId = null
+      state.loadVersion++
+      state.undoStack.length = 0
+      state.redoStack.length = 0
+      const dpr = window.devicePixelRatio || 1
+      state.ctx.clearRect(0, 0, state.canvas.width / dpr, state.canvas.height / dpr)
+    })
+    activeField = canvases.keys().next().value || ''
+    updateHistoryFlags()
   }
 
   function toggleDrawing() {
@@ -433,7 +488,9 @@ export function useDrawing(onChange?: () => void): DrawingState {
     mountCanvas,
     captureDrawing,
     captureAllDrawings,
+    consumeAllDrawings,
     setStoredDrawing,
+    resetDrawingSession,
     setCanvasParent,
   }
 }

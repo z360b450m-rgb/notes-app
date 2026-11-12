@@ -1,0 +1,459 @@
+/* Interaction roles use the existing warm palette in both themes. */
+:root {
+  --ui-danger: #b4503e;
+  --ui-danger-surface: #f7e7e0;
+  --ui-on-accent: #fffdf8;
+}
+:root.dark {
+  --ui-danger: #efad98;
+  --ui-danger-surface: #49312b;
+  --ui-on-accent: #252320;
+}
+#app .ui-button,
+#app button.metadata-select-trigger {
+  min-height: 32px;
+  border-radius: 8px;
+  box-shadow: none !important;
+}
+#app .ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--neo-line) !important;
+  background: var(--neo-reading) !important;
+  color: var(--neo-ink) !important;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+  -webkit-app-region: no-drag;
+}
+#app .ui-button:hover:not(:disabled) {
+  border-color: var(--neo-accent) !important;
+  color: var(--neo-accent) !important;
+}
+#app .ui-button[data-variant='text'] {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--neo-muted) !important;
+}
+#app .ui-button[data-variant='text']:hover:not(:disabled),
+#app .ui-button:is([aria-pressed='true'], [aria-expanded='true'], [data-state='open']) {
+  background: var(--neo-selected) !important;
+  color: var(--neo-accent) !important;
+}
+#app .ui-button[data-variant='primary'] {
+  border-color: var(--neo-accent) !important;
+  background: var(--neo-accent) !important;
+  color: var(--ui-on-accent) !important;
+}
+#app .ui-button[data-variant='danger'] {
+  border-color: var(--ui-danger) !important;
+  background: var(--ui-danger-surface) !important;
+  color: var(--ui-danger) !important;
+}
+#app .ui-button[data-variant='primary']:hover:not(:disabled),
+#app .ui-button[data-variant='danger']:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+#app .ui-button:disabled,
+#app .ui-command-item[data-disabled],
+#app .ui-command-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+#app .ui-button:focus-visible,
+#app .ui-command-item:focus-visible {
+  outline: 2px solid var(--neo-accent);
+  outline-offset: 2px;
+}
+#app .ui-icon-button {
+  width: 32px;
+  padding: 6px;
+}
+#app .ui-button::after,
+#app .ui-command-item::after {
+  content: none !important;
+}
+#app .ui-button[data-variant='danger-text'] {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--ui-danger) !important;
+}
+#app .ui-button[data-variant='danger-text']:hover:not(:disabled) {
+  background: var(--ui-danger-surface) !important;
+}
+#app .workspace-ui .sidebar-action-tray {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+#app .filter-item-row.is-selected {
+  background: var(--neo-selected);
+}
+#app .filter-item-row button::after {
+  content: none !important;
+}
+#app .ui-action-menu {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+#app .sidebar-sort-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+#app .sidebar-sort-controls .metadata-select-trigger {
+  width: 88px;
+  min-height: 28px;
+  padding: 4px 7px;
+  font-size: 12px;
+}
+#app .sidebar-action-tray .sidebar-batch-toggle {
+  min-width: 30px;
+  width: auto;
+  min-height: 28px;
+  padding: 4px;
+}
+#app .ui-batch-count {
+  font-size: 11px;
+  color: var(--neo-accent);
+}
+#app .ui-batch-tag-picker {
+  margin-top: 16px;
+}
+#app .sidebar-select-all[aria-checked='false'] svg {
+  visibility: hidden;
+}
+#app .sidebar-select-all:is([aria-checked='true'], [aria-checked='mixed']) {
+  border-color: var(--neo-accent) !important;
+  background: var(--neo-accent) !important;
+  color: var(--ui-on-accent) !important;
+}
+#app .ui-command-menu,
+#app .ui-popconfirm {
+  z-index: 10000;
+  min-width: 180px;
+  max-width: calc(100vw - 24px);
+  padding: 6px;
+  border: 1px solid var(--neo-line);
+  border-radius: 10px;
+  background: var(--neo-reading);
+  color: var(--neo-ink);
+  box-shadow: 0 8px 24px rgb(43 34 23 / 14%);
+  -webkit-app-region: no-drag;
+}
+#app .ui-command-menu {
+  max-height: var(--reka-dropdown-menu-content-available-height);
+  overflow-y: auto;
+}
+#app .ui-command-menu .ui-command-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 34px;
+  gap: 9px;
+  margin: 0;
+  padding: 7px 10px;
+  border: 0 !important;
+  border-radius: 6px;
+  background: transparent !important;
+  color: var(--neo-ink) !important;
+  box-shadow: none !important;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+  outline: none;
+}
+#app .ui-command-menu .ui-command-item:is([data-highlighted], :focus-visible):not(:disabled) {
+  background: var(--neo-selected) !important;
+  color: var(--neo-accent) !important;
+}
+#app .ui-command-menu .ui-command-item[data-danger] {
+  color: var(--ui-danger) !important;
+}
+#app .ui-menu-shortcut {
+  margin-left: auto;
+  padding-left: 16px;
+  color: var(--neo-muted);
+  font-size: 11px;
+}
+#app .ui-menu-separator {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--neo-line);
+}
+#app .ui-modal {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 24px;
+  overflow-y: auto;
+  border: 1px solid var(--neo-line);
+  border-radius: 14px;
+  background: var(--neo-reading);
+  color: var(--neo-ink);
+  box-shadow: 0 18px 64px rgb(35 28 19 / 22%);
+}
+#app .ui-modal::backdrop {
+  background: rgb(29 25 20 / 36%);
+}
+#app .ui-modal-heading h2,
+#app .ui-popconfirm h3 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 650;
+}
+#app .ui-modal-heading p,
+#app .ui-popconfirm p {
+  margin: 10px 0 0;
+  color: var(--neo-muted);
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+#app .ui-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+}
+#app .ui-inline-error {
+  margin-top: 14px;
+  color: var(--ui-danger);
+  font-size: 13px;
+  line-height: 1.7;
+}
+#app .ui-popconfirm {
+  width: 280px;
+  padding: 16px;
+}
+#app .ui-popconfirm h3 {
+  font-size: 14px;
+}
+#app .ui-popconfirm .ui-modal-actions {
+  margin-top: 16px;
+}
+#app .folder-delete-trigger {
+  width: 26px;
+  min-height: 26px;
+}
+#app .folder-row .folder-delete-trigger:hover {
+  color: var(--ui-danger) !important;
+}
+#app button.metadata-select-trigger {
+  background: var(--neo-reading) !important;
+  box-shadow: none !important;
+}
+#app button.metadata-select-trigger:is(:focus-visible, [data-state='open']) {
+  border-color: var(--neo-accent) !important;
+}
+#app .metadata-select-menu,
+#app .tag-select-menu {
+  border: 1px solid var(--neo-line);
+  border-radius: 10px;
+  background: var(--neo-reading);
+  box-shadow: 0 8px 24px rgb(43 34 23 / 14%);
+}
+#app .metadata-select-menu .soft-menu-item,
+#app .tag-select-menu .soft-menu-item {
+  min-height: 34px;
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+#app .tag-select-menu [role='option'][aria-selected='true'] {
+  background: var(--neo-selected) !important;
+  color: var(--neo-accent) !important;
+}
+#app .tag-select-menu [role='combobox'] {
+  min-height: 32px;
+  border: 1px solid var(--neo-line);
+  border-radius: 6px;
+  background: var(--neo-reading);
+  box-shadow: none;
+  font-size: 12px;
+}
+#app .editor-tool-menu .editor-tool-menu-panel {
+  border-radius: 10px;
+  background: var(--neo-reading);
+}
+#app .editor-tool-menu [role='menuitem'] {
+  min-height: 34px;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: transparent;
+  color: var(--neo-ink);
+  font-size: 13px;
+}
+#app .editor-tool-menu [role='menuitem']:is(:hover, :focus-visible) {
+  background: var(--neo-selected);
+  color: var(--neo-accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  #app .ui-button {
+    transition: none;
+  }
+}
+
+/* The same roles extend to notebook, AI, knowledge, import and plugin modules.
+   Layout classes remain owned by each module, including specialized media tools. */
+#app .ui-control {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--neo-line) !important;
+  border-radius: 8px;
+  background: var(--neo-reading) !important;
+  color: var(--neo-ink) !important;
+  box-shadow: none !important;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-app-region: no-drag;
+}
+#app .ui-control::after {
+  content: none !important;
+}
+#app .ui-control[data-ui-variant='text'],
+#app .ui-control[data-ui-variant='danger-text'] {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--neo-muted) !important;
+}
+#app .ui-control[data-ui-variant='primary'] {
+  border-color: var(--neo-accent) !important;
+  background: var(--neo-accent) !important;
+  color: var(--ui-on-accent) !important;
+}
+#app .ui-control[data-ui-variant='danger'],
+#app .ui-control[data-ui-variant='danger-text'] {
+  color: var(--ui-danger) !important;
+}
+#app .ui-control[data-ui-variant='danger'] {
+  border-color: var(--ui-danger) !important;
+  background: var(--ui-danger-surface) !important;
+}
+#app .ui-control:hover:not(:disabled):not([data-ui-variant='primary']) {
+  background: var(--neo-selected) !important;
+  color: var(--neo-accent) !important;
+}
+#app
+  .ui-control:is([data-ui-variant='danger'], [data-ui-variant='danger-text']):hover:not(:disabled) {
+  background: var(--ui-danger-surface) !important;
+  color: var(--ui-danger) !important;
+}
+#app .ui-control:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+#app .ui-control:focus-visible,
+#app .ui-choice:focus-visible,
+#app .ui-segmented-item:focus-visible {
+  outline: 2px solid var(--neo-accent);
+  outline-offset: 2px;
+}
+#app .ui-choice {
+  box-shadow: none !important;
+}
+#app .ui-choice::after {
+  content: none !important;
+}
+#app
+  .ui-choice:is(
+    [aria-pressed='true'],
+    [aria-selected='true'],
+    [aria-current='true'],
+    [aria-current='page'],
+    [aria-checked='true'],
+    [data-state='checked']
+  ) {
+  background: var(--neo-selected) !important;
+  color: var(--neo-accent) !important;
+  border-color: var(--neo-accent) !important;
+}
+#app .ui-field {
+  border: 1px solid var(--neo-line);
+  border-radius: 8px;
+  background: var(--neo-reading);
+  color: var(--neo-ink);
+  box-shadow: none;
+}
+#app input.ui-field,
+#app select.ui-field {
+  min-height: 32px;
+}
+#app .ui-field:focus {
+  border-color: var(--neo-accent);
+  outline: 2px solid color-mix(in srgb, var(--neo-accent) 35%, transparent);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+#app .ui-dialog-surface:not([data-ui-dialog-layout='canvas']) {
+  border: 1px solid var(--neo-line);
+  border-radius: 14px;
+  background: var(--neo-reading);
+  color: var(--neo-ink);
+  box-shadow: 0 18px 64px rgb(35 28 19 / 22%);
+}
+#app .ui-dialog-surface[data-ui-dialog-layout='drawer'] {
+  border-radius: 14px 0 0 14px;
+}
+#app .ui-modal-actions:empty {
+  display: none;
+}
+#app .ui-switch[aria-checked='true'] {
+  background: var(--neo-accent) !important;
+}
+#app .ui-switch[aria-checked='false'] {
+  background: var(--neo-line) !important;
+}
+#app .agent-history-content > .ui-action-menu {
+  align-self: center;
+  margin-right: 4px;
+}
+#app .ui-segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 12px;
+  border: 1px solid var(--neo-line);
+  border-radius: 10px;
+  background: var(--neo-surface);
+}
+#app .ui-segmented .ui-segmented-item {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 0 !important;
+  border-radius: 7px;
+  background: transparent !important;
+  color: var(--neo-muted) !important;
+  box-shadow: none !important;
+  font-size: 13px;
+  line-height: 1.5;
+}
+#app .ui-segmented .ui-segmented-item[data-state='checked'] {
+  background: var(--neo-reading) !important;
+  color: var(--neo-accent) !important;
+  box-shadow: 0 1px 3px rgb(35 28 19 / 10%) !important;
+}
+#app .ui-segmented-item::after {
+  content: none !important;
+}
+#app .ui-segmented-item:disabled {
+  opacity: 0.4;
+}
+#app .ui-switch[aria-checked='true'] .ui-switch-thumb {
+  transform: translateX(20px);
+}

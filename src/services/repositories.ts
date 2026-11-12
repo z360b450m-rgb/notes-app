@@ -8,6 +8,10 @@ export interface EntrySnapshot {
 
 export interface EntryRepository {
   getAll(notebookId: string): Promise<NoteEntry[]>
+  getSummaries?(notebookId: string): Promise<NoteEntry[]>
+  getSummary?(notebookId: string, entryId: string): Promise<NoteEntry | undefined>
+  cacheSummaries?(notebookId: string, entries: NoteEntry[]): Promise<void>
+  searchIds?(notebookId: string, query: string): Promise<string[]>
   get(notebookId: string, entryId: string): Promise<NoteEntry | undefined>
   put(notebookId: string, entry: NoteEntry): Promise<void>
   delete(notebookId: string, entryId: string): Promise<void>
@@ -26,6 +30,9 @@ export interface NotebookRepository {
 
 export interface QuestionGroupRepository {
   getAll(notebookId: string): Promise<QuestionGroup[]>
+  getSummaries?(notebookId: string): Promise<QuestionGroup[]>
+  getSummary?(notebookId: string, groupId: string): Promise<QuestionGroup | undefined>
+  cacheSummaries?(notebookId: string, groups: QuestionGroup[]): Promise<void>
   get(notebookId: string, groupId: string): Promise<QuestionGroup | undefined>
   put(notebookId: string, group: QuestionGroup): Promise<void>
   delete(notebookId: string, groupId: string): Promise<void>

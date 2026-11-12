@@ -1,4 +1,4 @@
-# --- Node/依赖包 ---
+# --- Node/渚濊禆鍖?---
 node_modules/
 .npm
 package-lock.json.backup
@@ -7,37 +7,39 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+.dev-services/
 
-# --- 构建产物 ---
+# --- 鏋勫缓浜х墿 ---
 dist/
 dist-electron/
 dist-electron-*/
 release/
 .electron-builder-cache/
-test-results/
 *.tsbuildinfo
 
-# --- 环境变量 (非常重要) ---
+# --- 鐜鍙橀噺 (闈炲父閲嶈) ---
 .env
 .env.local
 .env.*.local
 RAG-AIAgent/.env
 
-# --- Python 后端 ---
+# --- Python 鍚庣 ---
+.venv/
+venv/
 __pycache__/
-*.py[cod]
+*.pyc
 RAG-AIAgent/__pycache__/
 RAG-AIAgent/**/__pycache__/
 RAG-AIAgent/**/*.pyc
 RAG-AIAgent/.venv/
 RAG-AIAgent/venv/
 
-# --- 后端运行时数据（含用户文档 + KB 元数据，不入库） ---
+# --- 鍚庣杩愯鏃舵暟鎹紙鍚敤鎴锋枃妗?+ KB 鍏冩暟鎹紝涓嶅叆搴擄級 ---
 RAG-AIAgent/data/kb_registry.json
 RAG-AIAgent/data/*/
 !RAG-AIAgent/data/.gitkeep
 
-# --- 编辑器与系统文件 ---
+# --- 缂栬緫鍣ㄤ笌绯荤粺鏂囦欢 ---
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
@@ -51,7 +53,7 @@ Thumbs.db
 *.sln
 *.sw?
 
-# --- 开发调试临时文件 ---
+# --- 寮€鍙戣皟璇曚复鏃舵枃浠?---
 *_enter.*
 *_test.*
 *_state.*
@@ -59,14 +61,29 @@ fix_test.*
 debug.png
 PROGRESS.json
 
-# --- 本地打包核验与解包缓存 ---
+# --- 鏈湴鎵撳寘鏍搁獙涓庤В鍖呯紦瀛?---
 .*-package/
 .package-*-check/
 .target-package-check/
 .delete-archive-test/
 assets/
+!/src/site/assets/
+/src/site/assets/*
+!/src/site/assets/renote-r-georgia.png
+!/src/site/assets/guide/
 /icon-180.png
 /icon-192.png
 /icon-512.png
 /icon.svg
 /manifest.json
+
+# Local document/presentation generation artifacts
+/.codex-*/
+/output/
+/tmp/
+/.chart-data-*/
+/.docx-approval/
+/design-examples-preview.png
+/risk-models/
+/.data/pdf-imports/
+/.data/knowledge-documents/

@@ -16,7 +16,13 @@ type NotebookPluginInstallation = import('@/plugins/types').NotebookPluginInstal
 interface Window {
   electronAPI?: {
     platform: string
+    setStorageUser: (token: string) => Promise<void>
+    onCloseRequested: (callback: () => void) => () => void
+    confirmClose: () => Promise<void>
     getAll: (notebookId: string) => Promise<any[]>
+    getEntrySummaries?: (notebookId: string) => Promise<import('@/types').NoteEntry[]>
+    searchEntryIds?: (notebookId: string, query: string) => Promise<string[]>
+    getQuestionGroupSummaries?: (notebookId: string) => Promise<import('@/types').QuestionGroup[]>
     get: (notebookId: string, id: string) => Promise<any | null>
     put: (entry: any) => Promise<void>
     delete: (notebookId: string, id: string) => Promise<void>
@@ -42,6 +48,13 @@ interface Window {
     addReviewLog: (notebookId: string, log: any) => Promise<void>
     deleteReviewLogsByEntry: (notebookId: string, entryId: string) => Promise<void>
     getAllNotebooks: () => Promise<any[]>
+    getNotebookOverview?: {
+      (notebookIds: string[]): Promise<import('@/services/notebookOverview').NotebookOverview>
+      (
+        notebookIds: string[],
+        includeLocalState: true,
+      ): Promise<import('@/services/notebookOverview').LocalNotebookOverview>
+    }
     putNotebook: (notebook: any) => Promise<void>
     deleteNotebook: (id: string) => Promise<void>
     getDesktopSources: () => Promise<DesktopSource[]>

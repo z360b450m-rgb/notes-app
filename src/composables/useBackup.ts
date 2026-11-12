@@ -1,5 +1,11 @@
-import type { NoteEntry, QuestionGroup } from '@/types'
-import { entryRepository, questionGroupRepository } from '@/services/db'
+import type { NoteEntry } from '@/types'
+import {
+  entryRepository,
+  notebookRepository,
+  questionGroupRepository,
+  reviewLogRepository,
+} from '@/services/db'
+import { importBrowserArchive } from '@/services/archiveImport'
 import { ref } from 'vue'
 import JSZip from 'jszip'
 
@@ -31,16 +37,6 @@ function extractImages(html: string): {
   return { html: replaced, images }
 }
 
-function restoreImages(html: string, imageMap: Map<string, string>): string {
-  return html.replace(/<img[^>]+src="images\/([^"]+)"[^>]*>/gi, (match, filename: string) => {
-    const b64 = imageMap.get(filename)
-    if (!b64) return match
-    const ext = filename.split('.').pop()?.toLowerCase() || 'png'
-    const mime = ext === 'jpg' ? 'jpeg' : ext
-    return match.replace(/src="images\/[^"]+"/i, `src="data:image/${mime};base64,${b64}"`)
-  })
-}
-
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -58,11 +54,10 @@ function downloadBlob(blob: Blob, filename: string) {
 //
 // Electron 环境通过 IPC 调用主进程 (adm-zip + 原生对话框)。
 // 浏览器环境使用 JSZip 在渲染进程内打包/解包。
-// 两种环境产出的 .ctb 文件格式完全一致，可互相导入。
+// 网页版导入同时兼容旧版题目数组与桌面版完整归档。
 // ===================================================================
 export function useBackup(
-  getEntries: () => NoteEntry[],
-  getQuestionGroups: () => QuestionGroup[],
+  getEntries: () => NoteEntry[] | Promise<NoteEntry[]>,
   getNotebookId: () => string,
   reload: () => Promise<void>,
   onToast: (msg: string) => void,
@@ -85,7 +80,13 @@ export function useBackup(
     }
 
     // Browser: JSZip in-memory archive
-    const entries = getEntries()
+    let entries: NoteEntry[]
+    try {
+      entries = await getEntries()
+    } catch {
+      onToast('部分题目内容无法加载，请恢复连接后重试导出')
+      return
+    }
     if (entries.length === 0) {
       onToast('暂无错题可导出')
       return
@@ -97,28 +98,18 @@ export function useBackup(
 
       // Deep-clone and extract images
       const exportEntries = JSON.parse(JSON.stringify(entries)) as NoteEntry[]
-      const exportGroups = JSON.parse(JSON.stringify(getQuestionGroups())) as QuestionGroup[]
       for (const entry of exportEntries) {
         for (const field of ['question', 'wrongAnswer', 'correctAnswer'] as const) {
-          const html = (entry as Record<string, string>)[field] || ''
+          const html = entry[field] || ''
           const { html: replaced, images } = extractImages(html)
-          ;(entry as Record<string, string>)[field] = replaced
+          entry[field] = replaced
           for (const img of images) {
             imagesDir.file(img.filename, img.data, { base64: true })
           }
         }
       }
 
-      for (const group of exportGroups) {
-        const { html, images } = extractImages(group.material || '')
-        group.material = html
-        for (const img of images) imagesDir.file(img.filename, img.data, { base64: true })
-      }
-
-      zip.file(
-        'data.json',
-        JSON.stringify({ entries: exportEntries, questionGroups: exportGroups }, null, 2),
-      )
+      zip.file('data.json', JSON.stringify(exportEntries, null, 2))
 
       const blob = await zip.generateAsync({ type: 'blob' })
       downloadBlob(blob, `错题本_${timestamp()}.ctb`)
@@ -147,119 +138,46 @@ export function useBackup(
     }
 
     const targetNotebookId = getNotebookId()
-    if (!targetNotebookId) {
-      onToast('Please select a notebook before importing.')
-      return
-    }
-
-    // Browser: file picker + JSZip
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = '.ctb,.zip'
 
-    input.onchange = async () => {
-      const file = input.files?.[0]
-      if (!file) return
-
-      try {
-        const zip = await JSZip.loadAsync(file)
-
-        const dataJson = zip.file('data.json')
-        if (!dataJson) {
-          onToast('导入失败：归档中缺少 data.json')
+    // Keep the caller waiting until import finishes, including notebook refresh.
+    await new Promise<void>((resolve) => {
+      input.oncancel = () => resolve()
+      input.onchange = async () => {
+        const file = input.files?.[0]
+        if (!file) {
+          resolve()
           return
         }
-
-        const text = await dataJson.async('string')
-        const data = JSON.parse(text)
-        const importEntries = Array.isArray(data) ? data : data.entries
-        const importGroups = Array.isArray(data) ? [] : data.questionGroups || []
-
-        if (!Array.isArray(importEntries)) {
-          onToast('导入失败：数据格式不正确')
-          return
-        }
-
-        // Collect images from archive
-        const imageMap = new Map<string, string>()
-        const imagesFolder = zip.folder('images')
-        if (imagesFolder) {
-          const imageFiles = Object.keys(imagesFolder.files).filter(
-            (name) => !imagesFolder.files[name].dir,
-          )
-          for (const imgPath of imageFiles) {
-            const filename = imgPath.replace(/^images\//, '')
-            const base64 = await imagesFolder.file(imgPath)!.async('base64')
-            imageMap.set(filename, base64)
-          }
-        }
-
         let imported = 0
-        let skipped = 0
-
-        for (const group of importGroups) {
-          if (!group.id || typeof group.material !== 'string') continue
-          group.material = restoreImages(group.material, imageMap)
-          const sanitizedGroup: QuestionGroup = {
-            ...group,
-            notebookId: targetNotebookId,
-            title: group.title || '一拖 N 题组',
-            material: group.material,
-            createdAt: group.createdAt || Date.now(),
-            updatedAt: Date.now(),
-          }
-          await questionGroupRepository.put(targetNotebookId, sanitizedGroup)
-        }
-
-        for (const item of importEntries) {
-          if (!item.id || item.question === undefined) {
-            skipped++
-            continue
-          }
-
-          // Restore images in all rich-text fields
-          for (const field of ['question', 'wrongAnswer', 'correctAnswer'] as const) {
-            if (item[field] && typeof item[field] === 'string' && item[field].includes('images/')) {
-              item[field] = restoreImages(item[field], imageMap)
-            }
-          }
-
-          const sanitized: NoteEntry = {
-            ...item,
-            id: item.id,
-            notebookId: targetNotebookId,
-            tags: Array.isArray(item.tags) ? item.tags : [],
-            subject: item.subject || '',
-            source: item.source || '',
-            wrongAnswer: item.wrongAnswer || '',
-            correctAnswer: item.correctAnswer || '',
-            masteryLevel: keepReviewState ? item.masteryLevel || 0 : 0,
-            consecutivePasses: keepReviewState ? item.consecutivePasses || 0 : 0,
-            nextReviewDate: keepReviewState ? item.nextReviewDate : undefined,
-            lastReviewDate: keepReviewState ? item.lastReviewDate : undefined,
-            createdAt: item.createdAt || Date.now(),
-            updatedAt: Date.now(),
-          }
-          await entryRepository.put(targetNotebookId, sanitized)
-          imported++
-        }
-
-        await reload()
-
-        if (imported === 0) {
-          onToast('导入失败：未识别到有效错题数据')
-        } else {
-          let msg = `成功导入 ${imported} 条` + (!keepReviewState ? ' (已重置进度)' : '')
-          if (skipped > 0) msg += `，跳过 ${skipped} 条`
+        try {
+          const zip = await JSZip.loadAsync(file)
+          const result = await importBrowserArchive(zip, targetNotebookId, keepReviewState, {
+            entries: entryRepository,
+            notebooks: notebookRepository,
+            groups: questionGroupRepository,
+            logs: reviewLogRepository,
+          })
+          imported = result.imported
+          await reload()
+          let msg = `成功导入 ${imported} 条错题` + (!keepReviewState ? ' (已重置进度)' : '')
+          if (result.skipped > 0) msg += `，跳过 ${result.skipped} 条无效数据`
           onToast(msg)
+        } catch (err) {
+          console.error('导入归档失败', err)
+          if (imported > 0) {
+            onToast(`已导入 ${imported} 条错题，但列表刷新失败，请刷新页面查看`)
+          } else {
+            onToast(`导入失败：${err instanceof Error ? err.message : '无法解析归档文件'}`)
+          }
+        } finally {
+          resolve()
         }
-      } catch (err) {
-        console.error('导入归档失败', err)
-        onToast('导入失败：无法解析归档文件')
       }
-    }
-
-    input.click()
+      input.click()
+    })
   }
 
   return { exportData, importData, importModalVisible, handleImportOption }

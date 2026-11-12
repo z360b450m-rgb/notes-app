@@ -1,6 +1,6 @@
 # notes-app + RAG-AIAgent 完整技术档案
 
-> 错题本桌面应用 + 云原生 RAG Agent 后端的完整技术架构。**前端**在本目录，**后端**在并列的 `RAG-AIAgent/` 目录。
+> 本文记录早期桌面版与 `RAG-AIAgent` 原型的技术方案。当前版本包含本仓库的 FastAPI 业务后端，并通过接口接入独立的 `shopkeeper_brain` 查询服务。参见[当前技术框架](docs/technical-framework.md)和[本地启动说明](README.md#local-development)。
 
 ---
 
@@ -52,7 +52,7 @@ RAG-AIAgent/                        # 后端 Python RAG 服务（云原生）
 | 偏好存储 | **localStorage** | AI Skills / 选中 KB |
 | 代码规范 | ESLint + Prettier + Husky | Git hook 自动格式化 |
 | 网络 | 原生 **fetch + ReadableStream** | 手写 SSE 解析，0 额外 HTTP 依赖 |
-| 安全消毒 | **DOMPurify + marked** | 富文本 XSS 防护 |
+| 安全消毒 | **DOMPurify** | 富文本 XSS 防护 |
 
 ### 后端 (RAG-AIAgent)
 
@@ -553,7 +553,7 @@ data: {"answer": "...", "sources": ["错题标题1", "错题标题2"], "confiden
 
 | 文件 | 改动 |
 |---|---|
-| `notes-app/src/components/BatchBar.vue` | 已有批量选择 UI，加「移到 KB」按钮 |
+| `notes-app/src/components/AppSidebar.vue` | 已有批量选择 UI，加「移到 KB」按钮 |
 | `notes-app/src/composables/useEntries.ts` | 加 `bulkMoveToKb(ids: string[], kbId: string)`：循环改 `entry.kbId` → db.put → `ragSync.upsertEntry` |
 | 无需后端改动 | upsert 端点已经处理跨 KB 迁移 |
 

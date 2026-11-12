@@ -1,24 +1,45 @@
 <script setup lang="ts">
+import SegmentedControl from './SegmentedControl.vue'
+import { vDialogSurface } from '@/directives/dialogSurface'
 // @AI-NOTE: 统计面板组件 —— 统计数据由 useStats Hook 计算。
 // 禁止在此直接计算统计指标或操作存储。
 import { computed, ref } from 'vue'
 import type { ReviewHistorySession, StatsState } from '@/composables/useStats'
+import type { NoteEntry } from '@/types'
 import ReviewHistoryDetailModal from './ReviewHistoryDetailModal.vue'
 
 const props = defineProps<{
   stats: StatsState
+  loadEntriesContent?: (ids: string[]) => Promise<NoteEntry[]>
 }>()
 
 const emit = defineEmits<{
   close: []
 }>()
 
-const hueStep = computed(() => {
-  const n = props.stats.subjectBars.value.length || 1
-  return 360 / n
-})
+const overviewMetrics = computed(() => [
+  {
+    label: '总错题数',
+    value: props.stats.totalCount.value,
+    path: 'm12 3 9 5-9 5-9-5 9-5M3 12l9 5 9-5M3 16l9 5 9-5',
+  },
+  {
+    label: '待复习',
+    value: props.stats.dueCount.value,
+    path: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 7v5l3 2',
+  },
+  {
+    label: '今日已复习',
+    value: props.stats.reviewedToday.value,
+    path: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18m-4 9 3 3 5-6',
+  },
+  { label: '累计复习', value: props.stats.totalReviews.value, path: 'M3 10a9 9 0 1 1 2 8M3 4v6h6' },
+])
 
 const historyScope = ref<'due' | 'all'>('due')
+const masteredBucket = computed(() =>
+  props.stats.masteryBuckets.value.find((bucket) => bucket.label === '已掌握'),
+)
 const selectedSession = ref<ReviewHistorySession | null>(null)
 const selectedSessionScope = ref<'due' | 'all'>('due')
 const activeHistory = computed(() =>
@@ -27,9 +48,38 @@ const activeHistory = computed(() =>
     : props.stats.freeReviewHistory.value,
 )
 
-function openSession(session: ReviewHistorySession) {
-  selectedSession.value = session
-  selectedSessionScope.value = historyScope.value
+const historyLoading = ref(false)
+const historyError = ref('')
+let historySequence = 0
+async function openSession(session: ReviewHistorySession) {
+  const sequence = ++historySequence
+  const scope = historyScope.value
+  historyLoading.value = true
+  historyError.value = ''
+  try {
+    const details = await props.loadEntriesContent?.(session.entries.map((entry) => entry.entryId))
+    if (sequence !== historySequence) return
+    const byId = new Map(details?.map((entry) => [entry.id, entry]))
+    selectedSession.value = {
+      ...session,
+      entries: session.entries.map((row) => {
+        const full = byId.get(row.entryId)
+        return full
+          ? {
+              ...row,
+              question: full.question,
+              wrongAnswer: full.wrongAnswer,
+              correctAnswer: full.correctAnswer,
+            }
+          : row
+      }),
+    }
+    selectedSessionScope.value = scope
+  } catch {
+    if (sequence === historySequence) historyError.value = '复习详情暂时无法加载，请重试'
+  } finally {
+    if (sequence === historySequence) historyLoading.value = false
+  }
 }
 
 function formatSessionTime(timestamp: number): string {
@@ -58,7 +108,9 @@ function formatDuration(ms: number): string {
 
     <!-- Panel -->
     <div
-      class="fixed right-0 top-0 bottom-0 z-50 w-[340px] bg-white dark:bg-[#141413] shadow-xl border-l border-gray-100 dark:border-[#2e2e2c] overflow-y-auto"
+      v-dialog-surface="'复习统计'"
+      data-ui-dialog-layout="drawer"
+      class="stats-grouped-panel fixed right-0 top-0 bottom-0 z-50 w-[340px] bg-white dark:bg-[#141413] shadow-xl border-l border-gray-100 dark:border-[#2e2e2c] overflow-y-auto"
     >
       <!-- Header -->
       <div
@@ -82,7 +134,11 @@ function formatDuration(ms: number): string {
           统计面板
         </h2>
         <button
-          class="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-[#2a2a28] dark:bg-[#1e1e1c] text-gray-400 dark:text-brand-mid hover:text-gray-600 dark:text-brand-light-gray transition-all duration-200 ease-out active:scale-95"
+          data-ui-variant="text"
+          type="button"
+          aria-label="关闭"
+          data-dialog-cancel
+          class="ui-control p-1 rounded-md hover:bg-gray-100 dark:hover:bg-[#2a2a28] dark:bg-[#1e1e1c] text-gray-400 dark:text-brand-mid hover:text-gray-600 dark:text-brand-light-gray transition-all duration-200 ease-out active:scale-95"
           @click="emit('close')"
         >
           <svg
@@ -100,34 +156,27 @@ function formatDuration(ms: number): string {
       </div>
 
       <div class="p-5 space-y-6">
-        <!-- Overview cards -->
-        <div class="grid grid-cols-2 gap-3">
-          <div class="bg-blue-50 dark:bg-blue-950 rounded-xl shadow-sm p-3.5">
-            <div class="text-[11px] text-blue-500 font-medium mb-0.5">总错题数</div>
-            <div class="text-2xl font-bold text-blue-700 dark:text-blue-300 tabular-nums">
-              {{ stats.totalCount.value }}
-            </div>
-          </div>
-          <div class="bg-amber-50 dark:bg-amber-950 rounded-xl shadow-sm p-3.5">
-            <div class="text-[11px] text-amber-500 font-medium mb-0.5">待复习</div>
-            <div class="text-2xl font-bold text-amber-700 dark:text-amber-300 tabular-nums">
-              {{ stats.dueCount.value }}
-            </div>
-          </div>
-          <div class="bg-green-50 dark:bg-green-950 rounded-xl shadow-sm p-3.5">
-            <div class="text-[11px] text-green-500 font-medium mb-0.5">今日已复习</div>
-            <div class="text-2xl font-bold text-green-700 dark:text-green-300 tabular-nums">
-              {{ stats.reviewedToday.value }}
-            </div>
-          </div>
-          <div class="bg-purple-50 dark:bg-purple-950 rounded-xl shadow-sm p-3.5">
-            <div class="text-[11px] text-purple-500 font-medium mb-0.5">累计复习</div>
-            <div class="text-2xl font-bold text-purple-700 dark:text-purple-300 tabular-nums">
-              {{ stats.totalReviews.value }}
-            </div>
+        <!-- Grouped overview -->
+        <div class="stats-overview">
+          <div v-for="metric in overviewMetrics" :key="metric.label" class="stats-metric">
+            <span class="stats-metric-icon" aria-hidden="true">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path :d="metric.path" />
+              </svg>
+            </span>
+            <span>{{ metric.label }}</span>
+            <strong class="tabular-nums">{{ metric.value }}</strong>
           </div>
         </div>
-
         <!-- Subject distribution -->
         <div>
           <h3
@@ -143,7 +192,7 @@ function formatDuration(ms: number): string {
           </div>
           <div v-else class="space-y-2">
             <div
-              v-for="(item, i) in stats.subjectBars.value"
+              v-for="item in stats.subjectBars.value"
               :key="item.name"
               class="flex items-center gap-2"
             >
@@ -153,12 +202,14 @@ function formatDuration(ms: number): string {
               >
                 {{ item.name }}
               </span>
-              <div class="flex-1 h-5 bg-gray-100 dark:bg-[#1e1e1c] rounded-md overflow-hidden">
+              <div
+                class="stats-track flex-1 h-1.5 bg-gray-100 dark:bg-[#1e1e1c] rounded-md overflow-hidden"
+              >
                 <div
                   class="h-full rounded-md transition-all duration-500"
                   :style="{
                     width: item.pct + '%',
-                    backgroundColor: `hsl(${i * hueStep}, 55%, 55%)`,
+                    backgroundColor: 'var(--neo-accent)',
                   }"
                 />
               </div>
@@ -177,19 +228,25 @@ function formatDuration(ms: number): string {
           >
             近7天复习
           </h3>
-          <div class="flex items-end justify-between gap-1.5 h-24 px-1">
+          <div
+            class="stats-week flex items-end justify-between gap-1.5 px-1"
+            :class="{
+              'stats-week-empty': stats.weeklyActivity.value.every((day) => day.count === 0),
+            }"
+          >
             <div
               v-for="(day, i) in stats.weeklyActivity.value"
               :key="i"
               class="flex-1 flex flex-col items-center gap-1.5"
             >
-              <div class="w-full flex items-end justify-center h-16">
+              <span class="stats-day-count">{{ day.count }}</span>
+              <div class="stats-day-bar w-full flex items-end justify-center h-16">
                 <div
                   class="w-full max-w-[28px] rounded-t-md transition-all duration-500"
                   :class="day.count > 0 ? 'bg-accent' : 'bg-gray-150'"
                   :style="{
                     height: day.max > 0 ? Math.max(4, (day.count / day.max) * 100) + '%' : '4px',
-                    backgroundColor: day.count > 0 ? undefined : '#e5e7eb',
+                    backgroundColor: day.count > 0 ? undefined : 'var(--neo-line)',
                   }"
                 />
               </div>
@@ -205,6 +262,22 @@ function formatDuration(ms: number): string {
           >
             掌握程度
           </h3>
+          <div v-if="stats.totalCount.value > 0" class="stats-mastery-summary">
+            <div
+              class="stats-mastery-ring"
+              :style="{
+                background: `conic-gradient(var(--neo-accent) ${(masteredBucket?.pct ?? 0) * 3.6}deg, var(--neo-line) 0deg)`,
+              }"
+            >
+              <span>{{ masteredBucket?.pct ?? 0 }}%</span>
+            </div>
+            <div>
+              <div class="text-sm">
+                已掌握 {{ masteredBucket?.count ?? 0 }} / {{ stats.totalCount.value }} 题
+              </div>
+              <div class="text-xs text-gray-500 dark:text-brand-mid">复习进度</div>
+            </div>
+          </div>
           <div
             v-if="stats.masteryBuckets.value.every((b) => b.count === 0)"
             class="text-[12px] text-gray-400 dark:text-brand-mid text-center py-4"
@@ -213,7 +286,7 @@ function formatDuration(ms: number): string {
           </div>
           <div v-else class="space-y-2">
             <div
-              v-for="bucket in stats.masteryBuckets.value"
+              v-for="bucket in stats.masteryBuckets.value.filter((item) => item.count > 0)"
               :key="bucket.label"
               class="flex items-center gap-2"
             >
@@ -222,7 +295,9 @@ function formatDuration(ms: number): string {
               >
                 {{ bucket.label }}
               </span>
-              <div class="flex-1 h-4 bg-gray-100 dark:bg-[#1e1e1c] rounded-full overflow-hidden">
+              <div
+                class="stats-track flex-1 h-1.5 bg-gray-100 dark:bg-[#1e1e1c] rounded-full overflow-hidden"
+              >
                 <div
                   class="h-full rounded-full transition-all duration-500"
                   :style="{ width: bucket.pct + '%', backgroundColor: bucket.color }"
@@ -243,30 +318,15 @@ function formatDuration(ms: number): string {
           >
             复习历史
           </h3>
-          <div class="mb-3 grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1 dark:bg-[#1e1e1c]">
-            <button
-              class="rounded-lg px-2 py-2 text-xs font-medium transition-colors"
-              :class="
-                historyScope === 'due'
-                  ? 'bg-white text-accent shadow-sm dark:bg-[#333330]'
-                  : 'text-gray-500 dark:text-brand-mid'
-              "
-              @click="historyScope = 'due'"
-            >
-              到期复习 ({{ stats.dueReviewHistory.value.length }})
-            </button>
-            <button
-              class="rounded-lg px-2 py-2 text-xs font-medium transition-colors"
-              :class="
-                historyScope === 'all'
-                  ? 'bg-white text-violet-600 shadow-sm dark:bg-[#333330] dark:text-violet-300'
-                  : 'text-gray-500 dark:text-brand-mid'
-              "
-              @click="historyScope = 'all'"
-            >
-              自由复习 ({{ stats.freeReviewHistory.value.length }})
-            </button>
-          </div>
+          <SegmentedControl
+            label="复习记录范围"
+            :model-value="historyScope"
+            :options="[
+              { value: 'due', label: '到期复习' },
+              { value: 'all', label: '自由复习' },
+            ]"
+            @update:model-value="historyScope = $event === 'all' ? 'all' : 'due'"
+          />
           <div
             v-if="activeHistory.length === 0"
             class="rounded-xl border border-dashed border-gray-200 dark:border-[#383835] px-3 py-4 text-center text-[12px] text-gray-400 dark:text-brand-mid"
@@ -275,9 +335,10 @@ function formatDuration(ms: number): string {
           </div>
           <div v-else class="space-y-2">
             <button
+              type="button"
               v-for="session in activeHistory"
               :key="session.id"
-              class="w-full rounded-xl border border-gray-100 bg-gray-50/70 text-left transition-colors hover:border-accent/40 hover:bg-accent/5 dark:border-[#2e2e2c] dark:bg-[#1e1e1c] dark:hover:bg-accent/10"
+              class="ui-choice w-full rounded-xl border border-gray-100 bg-gray-50/70 text-left transition-colors hover:border-accent/40 hover:bg-accent/5 dark:border-[#2e2e2c] dark:bg-[#1e1e1c] dark:hover:bg-accent/10"
               @click="openSession(session)"
             >
               <div class="px-3 py-3">
@@ -304,6 +365,13 @@ function formatDuration(ms: number): string {
         </div>
       </div>
     </div>
+    <p
+      v-if="historyLoading || historyError"
+      class="text-center text-sm text-gray-500"
+      role="status"
+    >
+      {{ historyLoading ? '正在加载复习详情…' : historyError }}
+    </p>
     <ReviewHistoryDetailModal
       v-if="selectedSession"
       :session="selectedSession"

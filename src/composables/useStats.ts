@@ -83,6 +83,7 @@ export interface ReviewHistorySession {
     correctChoice?: string
     elapsedMs: number
     reviewNote?: string
+    answerText?: string
   }[]
 }
 
@@ -202,6 +203,7 @@ export function useStats(entries: Ref<NoteEntry[]>, getNotebookId: () => string)
               correctChoice: log.correctChoice,
               elapsedMs: log.elapsedMs ?? 0,
               reviewNote: log.reviewNote,
+              answerText: log.answerText,
             }
           }),
         }

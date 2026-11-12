@@ -1,12 +1,21 @@
 <script setup lang="ts">
 // @AI-NOTE: 答案面板组件 —— 纯展示 + 编辑。数据通过 props 传入,
 // 变更通过 emit 委托。禁止直接操作存储或实现保存逻辑。
-import { ref, watch, nextTick, computed, inject, type Ref } from 'vue'
+import { ref, watch, nextTick, computed, inject, onUnmounted, type Ref } from 'vue'
+import ImageTextModal from './ImageTextModal.vue'
+import { captureEditorRange } from '@/utils/imageTextInsert'
+import { useImageTextInsertion } from '@/composables/useImageTextInsertion'
 import CameraCapture from './CameraCapture.vue'
 import ScreenshotPicker from './ScreenshotPicker.vue'
 import RichTextSizeControls from './RichTextSizeControls.vue'
-import { saveImage, toDisplayHtml, toStorageHtml } from '@/services/imageStorage'
+import EditorImageActions from './EditorImageActions.vue'
+import QuestionLinkModal from './QuestionLinkModal.vue'
+import type { NoteEntry } from '@/types'
+import { toDisplayHtml, toStorageHtml } from '@/services/imageStorage'
 import { useRichTextSizing } from '@/composables/useRichTextSizing'
+import { pastePlainText } from '@/utils/plainTextPaste'
+import { decorateInternalLinks } from '@/utils/internalLinks'
+import { useMathPreview } from '@/composables/useMathPreview'
 
 const props = defineProps<{
   type: 'wrong' | 'correct'
@@ -14,6 +23,9 @@ const props = defineProps<{
   modelValue: string
   entryId: string
   notebookId: string
+  layoutEditing?: boolean
+  formattingActive: boolean
+  entries: NoteEntry[]
 }>()
 
 const emit = defineEmits<{
@@ -21,30 +33,72 @@ const emit = defineEmits<{
   reveal: []
   blur: []
   'mount-canvas': [el: HTMLElement, entryId: string, field: string]
+  'layout-drag-start': [event: PointerEvent]
+  'activate-formatting': [panel: 'wrong' | 'correct']
+  'open-entry': [id: string]
 }>()
 
 const drawingEnabled = inject<Ref<boolean>>('drawingEnabled', ref(false))
 
 const bodyRef = ref<HTMLDivElement | null>(null)
+useMathPreview(() => bodyRef.value)
 const canvasContainerRef = ref<HTMLDivElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const camOpen = ref(false)
 const screenshotOpen = ref(false)
 const wrapperRef = ref<HTMLDivElement | null>(null)
+const showQuestionLinkModal = ref(false)
+const linkedTargetId = ref<string | null>(null)
 
 const {
   hasSelectedImage,
+  imageWidth,
+  hasTextSelection,
+  isBold,
+  boldMixed,
+  highlightColor,
   captureSelection,
   handleEditorClick,
-  applyFontSize,
+
+  toggleBold,
+  applyHighlight,
   applyImageWidth,
   serializeHtml,
   resetSizingState,
-} = useRichTextSizing(() => bodyRef.value, onInput)
+  insertInternalLink,
+  removeInternalLink,
+} = useRichTextSizing(
+  () => bodyRef.value,
+  onInput,
+  (targetId) => {
+    linkedTargetId.value = targetId
+    showQuestionLinkModal.value = true
+  },
+)
+
+function requestQuestionLink() {
+  linkedTargetId.value = null
+  showQuestionLinkModal.value = true
+}
+
+function chooseQuestionLink(target: NoteEntry) {
+  if (target.id === props.entryId) return
+  if (insertInternalLink(target.id, target.title || '关联题目')) showQuestionLinkModal.value = false
+}
+
+function unlinkQuestion() {
+  if (removeInternalLink()) showQuestionLinkModal.value = false
+}
+
+function openLinkedEntry(id: string) {
+  if (!props.entries.some((entry) => entry.id === id)) return
+  showQuestionLinkModal.value = false
+  emit('open-entry', id)
+}
 
 const isWrong = props.type === 'wrong'
 const label = isWrong ? '错误答案' : '正确答案'
-const dotClass = isWrong ? 'bg-red-400' : 'bg-emerald-400'
+const dotClass = isWrong ? 'bg-[#b85c4b] dark:bg-[#df9a8c]' : 'bg-[#63816b] dark:bg-[#a0b8a5]'
 
 const panelBg = isWrong
   ? 'bg-red-50 border-red-100 dark:bg-red-500/10 dark:border-red-500/20'
@@ -54,8 +108,8 @@ const headerBorder = isWrong
   ? 'border-red-100 dark:border-red-500/20'
   : 'border-emerald-100 dark:border-emerald-500/20'
 const headerText = isWrong
-  ? 'text-red-600 dark:text-red-400'
-  : 'text-emerald-600 dark:text-emerald-400'
+  ? 'text-[#b85c4b] dark:text-[#df9a8c]'
+  : 'text-[#63816b] dark:text-[#a0b8a5]'
 const hiddenBg = isWrong ? 'bg-red-50 dark:bg-red-500/10' : 'bg-emerald-50 dark:bg-emerald-500/10'
 const hiddenColor = isWrong
   ? 'text-red-500 dark:text-red-400'
@@ -63,13 +117,14 @@ const hiddenColor = isWrong
 
 let suppressInput = false
 
-const showHidden = computed(() => props.type === 'correct' && props.hidden)
+const showHidden = computed(() => props.hidden)
 
 function syncContent() {
   nextTick(() => {
     if (bodyRef.value) {
       suppressInput = true
       bodyRef.value.innerHTML = toDisplayHtml(props.modelValue)
+      decorateInternalLinks(bodyRef.value, props.entries)
       suppressInput = false
     }
   })
@@ -78,6 +133,8 @@ function syncContent() {
 watch(
   () => props.entryId,
   () => {
+    showQuestionLinkModal.value = false
+    linkedTargetId.value = null
     resetSizingState()
     syncContent()
     nextTick(() => {
@@ -110,6 +167,15 @@ watch(showHidden, (hidden) => {
   }
 })
 
+watch(
+  () => props.entries.map((entry) => `${entry.id}\u0000${entry.title}`).join('\u0001'),
+  () => {
+    nextTick(() => {
+      if (bodyRef.value) decorateInternalLinks(bodyRef.value, props.entries)
+    })
+  },
+)
+
 function onInput() {
   if (suppressInput) return
   if (bodyRef.value) {
@@ -117,55 +183,68 @@ function onInput() {
   }
 }
 
-async function insertImageAtCursor(source: Blob | string) {
-  const el = bodyRef.value
-  if (!el) return
-  let displayUrl: string
-  try {
-    displayUrl = (await saveImage(props.notebookId, source)).displayUrl
-  } catch (error) {
-    console.error('Failed to save image', error)
-    return
-  }
-  el.focus()
-
-  const img = document.createElement('img')
-  img.src = displayUrl
-  img.style.maxWidth = '100%'
-  img.style.borderRadius = '6px'
-
-  const sel = window.getSelection()
-  if (sel && sel.rangeCount > 0) {
-    const range = sel.getRangeAt(0)
-    range.deleteContents()
-    range.insertNode(img)
-    range.collapse(false)
-    const br = document.createElement('br')
-    range.insertNode(br)
-    range.setStartAfter(br)
-    range.collapse(true)
-    sel.removeAllRanges()
-    sel.addRange(range)
-  } else {
-    el.appendChild(img)
-    const br = document.createElement('br')
-    el.appendChild(br)
-  }
-  onInput()
+const imageTextSrc = ref('')
+let imageInsertionRange: Range | null = null
+const {
+  insert: insertRecognized,
+  inserting: imageInserting,
+  insertionError: imageInsertionError,
+  cancelInsertion,
+} = useImageTextInsertion(
+  () => `${props.notebookId}/${props.entryId}/${props.hidden}`,
+  () => props.notebookId,
+)
+function closeImageText() {
+  cancelInsertion()
+  if (imageTextSrc.value.startsWith('blob:')) URL.revokeObjectURL(imageTextSrc.value)
+  imageTextSrc.value = ''
+  imageInsertionRange = null
 }
+function insertImageAtCursor(source: Blob | string) {
+  const position = captureEditorRange(bodyRef.value) || imageInsertionRange
+  closeImageText()
+  imageInsertionRange = position
+  imageTextSrc.value = source instanceof Blob ? URL.createObjectURL(source) : source
+}
+async function onTextConfirm(text: string, source: string, keepOriginal: boolean) {
+  if (!imageTextSrc.value) return
+  if (
+    await insertRecognized(
+      bodyRef.value,
+      text,
+      keepOriginal ? source : undefined,
+      imageInsertionRange,
+      onInput,
+    )
+  )
+    closeImageText()
+}
+async function onImageOnly(source: string) {
+  await onTextConfirm('', source, true)
+}
+watch(
+  () => [props.notebookId, props.entryId, props.hidden],
+  () => {
+    closeImageText()
+    camOpen.value = false
+    screenshotOpen.value = false
+  },
+  { flush: 'sync' },
+)
+onUnmounted(closeImageText)
 
 function onPaste(e: ClipboardEvent) {
   const items = e.clipboardData?.items
-  if (!items) return
-  for (const item of items) {
+  for (const item of Array.from(items || [])) {
     if (item.type.startsWith('image/')) {
       e.preventDefault()
       const blob = item.getAsFile()
       if (!blob) continue
       void insertImageAtCursor(blob)
-      break
+      return
     }
   }
+  if (pastePlainText(e, bodyRef.value)) onInput()
 }
 
 function onDragOver(e: DragEvent) {
@@ -197,7 +276,14 @@ function onBodyWheel(e: WheelEvent) {
 }
 
 function openFilePicker() {
+  imageInsertionRange = captureEditorRange(bodyRef.value)
   fileInput.value?.click()
+}
+
+function openCapture(kind: 'camera' | 'screenshot') {
+  imageInsertionRange = captureEditorRange(bodyRef.value)
+  if (kind === 'camera') camOpen.value = true
+  else screenshotOpen.value = true
 }
 
 function onFileChange() {
@@ -221,8 +307,10 @@ function onScreenshotCapture(dataUrl: string) {
 <template>
   <!-- @AI-VIEW: DOM 可自由重构。样式仅限 Tailwind CSS 工具类。严禁内联 style 或自定义 CSS。 -->
   <div
-    class="answer-panel flex-1 flex flex-col overflow-hidden overscroll-contain rounded-lg border group"
+    class="answer-panel flex-1 min-h-0 flex flex-col overflow-hidden overscroll-contain rounded-lg border group"
     :class="panelBg"
+    @mousedown="emit('activate-formatting', type)"
+    @focusin="emit('activate-formatting', type)"
   >
     <div
       class="panel-label flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold border-b flex-shrink-0"
@@ -230,79 +318,64 @@ function onScreenshotCapture(dataUrl: string) {
     >
       <span class="w-2 h-2 rounded-full" :class="dotClass" />
       {{ label }}
+      <button
+        type="button"
+        class="answer-visibility-action ml-auto inline-flex shrink-0 items-center gap-1 rounded-md text-xs font-normal"
+        :data-testid="isWrong ? 'wrong-answer-toggle' : 'correct-answer-toggle'"
+        :aria-label="showHidden ? `显示${label}` : `隐藏${label}`"
+        :aria-expanded="!showHidden"
+        :title="showHidden ? `显示${label}` : `隐藏${label}`"
+        @click.stop="emit('reveal')"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          aria-hidden="true"
+        >
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+          <circle cx="12" cy="12" r="3" />
+          <path v-if="!showHidden" d="M2 2l20 20" />
+        </svg>
+        {{ showHidden ? '显示' : '隐藏' }}
+      </button>
 
-      <!-- Image tools (top-right) -->
-      <div v-if="!showHidden" class="ml-auto flex items-center gap-0.5">
-        <RichTextSizeControls
-          :image-selected="hasSelectedImage"
-          @preserve-selection="captureSelection"
-          @font-size="applyFontSize"
-          @image-width="applyImageWidth"
-        />
-        <span class="mx-0.5 h-4 w-px bg-gray-200 dark:bg-[#3a3a37]" />
-        <button
-          class="w-6 h-6 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5 transition-all active:scale-90"
-          title="截屏"
-          @click="screenshotOpen = true"
-        >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <rect x="2" y="2" width="20" height="20" rx="2" ry="2" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <polyline points="21 15 16 10 5 21" />
-          </svg>
-        </button>
-        <button
-          class="w-6 h-6 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5 transition-all active:scale-90"
-          title="拍照"
-          @click="camOpen = true"
-        >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path
-              d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"
-            />
-            <circle cx="12" cy="13" r="4" />
-          </svg>
-        </button>
-        <button
-          class="w-6 h-6 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5 transition-all active:scale-90"
-          title="导入图片"
-          @click="openFilePicker"
-        >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <polyline points="21 15 16 10 5 21" />
-          </svg>
-        </button>
-        <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFileChange" />
-      </div>
+      <button
+        v-show="layoutEditing"
+        class="panel-drag-button ml-1 inline-flex touch-none cursor-grab items-center gap-1 rounded-md border border-current px-2 py-0.5 text-[10px] font-semibold opacity-70 transition-opacity hover:opacity-100 active:cursor-grabbing"
+        :title="`拖动${label}板块换位`"
+        :aria-label="`拖动${label}板块换位`"
+        @pointerdown.stop="emit('layout-drag-start', $event)"
+        @click.stop
+      >
+        ⠿ 拖动
+      </button>
+
+      <!-- Panel-specific image insertion tools -->
+      <Teleport defer to="#shared-image-tools"
+        ><div v-show="formattingActive && !showHidden" class="flex items-center gap-1">
+          <EditorImageActions
+            @screenshot="openCapture('screenshot')"
+            @camera="openCapture('camera')"
+            @import="openFilePicker"
+          />
+          <input
+            ref="fileInput"
+            type="file"
+            accept="image/*"
+            class="hidden"
+            @change="onFileChange"
+          /></div
+      ></Teleport>
     </div>
 
     <div
       v-if="!showHidden"
       ref="wrapperRef"
-      class="flex-1 overflow-y-auto overscroll-contain"
+      class="flex-1 min-h-0 overflow-y-auto overscroll-contain"
       @wheel="onBodyWheel"
     >
       <div ref="canvasContainerRef" :style="{ position: 'relative', minHeight: '100%' }">
@@ -325,20 +398,59 @@ function onScreenshotCapture(dataUrl: string) {
 
     <div
       v-else
-      class="flex-1 flex items-center justify-center cursor-pointer select-none rounded-b-lg transition-all duration-200 ease-out active:scale-[0.98]"
+      class="flex-1 flex items-center justify-center select-none transition-all duration-200 ease-out"
       :class="[hiddenBg, hiddenColor]"
-      @click="emit('reveal')"
     >
-      <span class="text-sm font-medium">点击显示{{ label }}</span>
+      <span class="text-sm font-medium">{{ label }}已隐藏</span>
     </div>
   </div>
 
-  <CameraCapture v-if="camOpen" @capture="onCameraCapture" @close="camOpen = false" />
+  <Teleport v-if="formattingActive && !showHidden" defer to="#rich-text-formatting-toolbar">
+    <RichTextSizeControls
+      :image-selected="hasSelectedImage"
+      :image-width="imageWidth"
+      :text-selected="hasTextSelection"
+      :bold="isBold"
+      :bold-mixed="boldMixed"
+      :highlight-color="highlightColor"
+      @preserve-selection="captureSelection"
+      @toggle-bold="toggleBold"
+      @highlight="applyHighlight"
+      @image-width="applyImageWidth"
+      @link="requestQuestionLink"
+    />
+  </Teleport>
+
+  <Transition name="modal"
+    ><CameraCapture v-if="camOpen" @capture="onCameraCapture" @close="camOpen = false"
+  /></Transition>
 
   <ScreenshotPicker
     v-if="screenshotOpen"
     @capture="onScreenshotCapture"
     @close="screenshotOpen = false"
+  />
+
+  <ImageTextModal
+    v-if="imageTextSrc"
+    :image-src="imageTextSrc"
+    :notebook-id="notebookId"
+    :inserting="imageInserting"
+    :insertion-error="imageInsertionError"
+    @confirm="onTextConfirm"
+    @skip="onImageOnly"
+    @cancel="closeImageText"
+  />
+
+  <QuestionLinkModal
+    :visible="showQuestionLinkModal"
+    :entries="entries"
+    :current-entry-id="entryId"
+    :linked-target-id="linkedTargetId"
+    @choose="chooseQuestionLink"
+    @open="openLinkedEntry"
+    @remove="unlinkQuestion"
+    @cancel="showQuestionLinkModal = false"
   />
 </template>
 

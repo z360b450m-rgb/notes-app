@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vDialogSurface } from '@/directives/dialogSurface'
 // @AI-NOTE: 桌面截图选择器 (仅 Electron) —— 通过 desktopCapturer
 // 获取屏幕缩略图, 截图结果通过 emit 发送。不在此操作业务数据。
 import { ref, onMounted, onUnmounted } from 'vue'
@@ -109,6 +110,7 @@ onUnmounted(() => {
     @click.self="emit('close')"
   >
     <div
+      v-dialog-surface="'选择截屏区域'"
       class="bg-white dark:bg-[#141413] rounded-2xl shadow-2xl overflow-hidden w-[680px] max-w-[94vw] max-h-[90vh] flex flex-col"
     >
       <div
@@ -116,7 +118,11 @@ onUnmounted(() => {
       >
         <h2 class="text-[15px] font-bold text-gray-800 dark:text-brand-light">选择截屏区域</h2>
         <button
-          class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:text-brand-mid dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#1e1e1c] transition-all active:scale-90"
+          data-ui-variant="text"
+          type="button"
+          aria-label="关闭"
+          data-dialog-cancel
+          class="ui-control w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:text-brand-mid dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#1e1e1c] transition-all active:scale-90"
           @click="emit('close')"
         >
           <svg
@@ -148,9 +154,10 @@ onUnmounted(() => {
         </div>
         <div v-else class="grid grid-cols-3 gap-3">
           <button
+            type="button"
             v-for="s in sources"
             :key="s.id"
-            class="relative flex flex-col items-center gap-2 p-3 rounded-xl border border-gray-100 dark:border-[#2e2e2c] hover:border-accent hover:bg-accent/5 transition-all duration-200 active:scale-[0.98] overflow-hidden"
+            class="ui-choice relative flex flex-col items-center gap-2 p-3 rounded-xl border border-gray-100 dark:border-[#2e2e2c] hover:border-accent hover:bg-accent/5 transition-all duration-200 active:scale-[0.98] overflow-hidden"
             :class="{ 'border-accent bg-accent/10': capturing === s.id }"
             @click="captureSource(s)"
           >

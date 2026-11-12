@@ -39,6 +39,7 @@ export function useReviewLogs(getNotebookId: () => string) {
       | 'sessionCompleted'
       | 'elapsedMs'
       | 'reviewNote'
+      | 'answerText'
     >,
   ) {
     const log: ReviewLog = {
@@ -52,6 +53,7 @@ export function useReviewLogs(getNotebookId: () => string) {
       await reviewLogRepository.add(getNotebookId(), log)
     } catch (err) {
       console.error('Failed to save review log', err)
+      throw err
     }
     reviewLogs.value.push(log)
   }
@@ -70,5 +72,10 @@ export function useReviewLogs(getNotebookId: () => string) {
     loadLogs,
     addLog,
     deleteLogsByEntry,
+    acceptServerLog: (log: ReviewLog) => {
+      const index = reviewLogs.value.findIndex((item) => item.id === log.id)
+      if (index < 0) reviewLogs.value.push(log)
+      else reviewLogs.value[index] = log
+    },
   }
 }

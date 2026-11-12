@@ -1,0 +1,199 @@
+/* Reading surfaces and controls for the review workspace and knowledge manager. */
+#app :is(.review-agent, .knowledge-dialog) {
+  --neo-muted: #625d54;
+  --neo-accent: #9c442b;
+  --review-assistant: #faf9f5;
+  --review-user: #f3e2d6;
+  --review-border: #cdc5b8;
+  --review-warning: #fff3da;
+  --review-warning-ink: #70430b;
+  color: var(--neo-ink);
+}
+.dark #app :is(.review-agent, .knowledge-dialog) {
+  --neo-muted: #c8c1b5;
+  --neo-accent: #f2b294;
+  --review-assistant: #34312d;
+  --review-user: #49372c;
+  --review-border: #6b6156;
+  --review-warning: #3f3421;
+  --review-warning-ink: #f4d498;
+}
+#app .review-agent .agent-conversation {
+  background: color-mix(in srgb, var(--neo-reading) 45%, var(--neo-surface));
+  border-color: var(--review-border);
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--neo-muted) transparent;
+}
+#app .review-agent .agent-new-chat {
+  max-width: 760px;
+  margin-inline: auto;
+  justify-content: safe center;
+  overflow-y: auto;
+}
+#app .review-agent .agent-message {
+  max-width: min(100%, 78ch);
+  border-color: var(--review-border);
+  color: var(--neo-ink);
+  box-shadow: 0 2px 4px rgb(55 43 28 / 5%);
+  overflow-wrap: anywhere;
+}
+#app .review-agent .agent-message-assistant {
+  max-width: 100%;
+  background: var(--review-assistant);
+}
+#app .review-agent .agent-message-user {
+  background: var(--review-user);
+}
+#app .review-agent .agent-processing {
+  border-color: var(--review-border);
+  background: var(--neo-surface);
+}
+#app .review-agent .agent-history-button[aria-current='true'] {
+  background: var(--review-user) !important;
+  color: var(--neo-ink) !important;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--neo-accent) !important;
+}
+#app .review-agent .agent-history-button {
+  color: var(--neo-ink) !important;
+}
+#app :is(.review-agent, .knowledge-dialog) button::after {
+  content: none !important;
+}
+#app .review-agent .agent-history-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--neo-muted) transparent;
+}
+#app .review-agent .agent-library-chip {
+  border-color: var(--review-border);
+  background: var(--review-assistant);
+  color: var(--neo-ink);
+}
+#app .review-agent :is(.agent-chip-remove, .agent-notice-action) {
+  color: inherit !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+#app .review-agent :is(.agent-chip-remove, .agent-notice-action)::after {
+  content: none !important;
+}
+#app .review-agent .agent-knowledge-notice {
+  color: var(--review-warning-ink);
+  border-color: currentColor;
+  background: var(--review-warning);
+}
+#app .review-agent .agent-composer {
+  flex-shrink: 0;
+  background: var(--neo-reading);
+  border-color: var(--review-border);
+  box-shadow: 0 2px 5px rgb(55 43 28 / 6%);
+}
+#app .review-agent .agent-suggestion {
+  color: var(--neo-muted) !important;
+}
+#app .review-agent .agent-library-trigger {
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+#app .review-agent .agent-library-trigger:hover:not(:disabled) {
+  background: var(--review-user) !important;
+  color: var(--neo-accent) !important;
+}
+#app .review-agent :is(.text-accent, .learning-answer a) {
+  color: var(--neo-accent) !important;
+}
+#app .review-agent .learning-answer a {
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+#app .review-agent .learning-answer img {
+  max-width: 100%;
+  height: auto;
+}
+#app :is(.review-agent .agent-send, .knowledge-dialog .bg-accent) {
+  color: #fff !important;
+  background: #9c442b !important;
+  box-shadow: none !important;
+}
+.dark #app :is(.review-agent .agent-send, .knowledge-dialog .bg-accent) {
+  color: #251d18 !important;
+  background: #f2b294 !important;
+}
+#app :is(.review-agent .agent-send, .knowledge-dialog .bg-accent):hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+#app .knowledge-dialog {
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--neo-muted) transparent;
+}
+#app .knowledge-dialog :is(button, input, select, textarea) {
+  max-width: 100%;
+  min-width: 0;
+}
+#app
+  .knowledge-dialog
+  button:not(.bg-accent):not(:where(.ui-control, .ui-button, .ui-choice, .ui-segmented-item)) {
+  color: var(--neo-ink) !important;
+  border: 1px solid var(--review-border) !important;
+  box-shadow: none !important;
+}
+#app .knowledge-dialog .knowledge-tabs button {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+#app .knowledge-dialog .knowledge-tabs button[aria-pressed='true'] {
+  color: var(--neo-accent) !important;
+  background: var(--review-user) !important;
+  border-color: var(--neo-accent) !important;
+  font-weight: 600;
+}
+#app .knowledge-dialog :is(.knowledge-ingest, .knowledge-import, .knowledge-library-card) {
+  border-color: var(--review-border);
+  background: var(--review-assistant);
+}
+#app .knowledge-dialog .knowledge-index-result {
+  background: var(--neo-surface);
+  border-color: var(--review-border);
+}
+@media (max-width: 767px) {
+  #app .review-workspace {
+    flex-direction: column;
+  }
+  #app .review-workspace .notebook-navigation {
+    width: auto;
+    margin: 8px;
+    border-radius: 14px;
+  }
+  #app .review-workspace .notebook-navigation > div:first-child {
+    padding: 6px;
+  }
+  #app .review-workspace .notebook-navigation > :not(:first-child):not(#review-agent-navigation),
+  #app .review-workspace .notebook-navigation > div:first-child > div {
+    display: none;
+  }
+  #app .review-workspace .notebook-navigation nav {
+    flex-direction: row;
+    gap: 4px;
+  }
+  #app .review-workspace #review-agent-navigation {
+    height: 200px;
+    flex: none;
+    margin: 0 12px;
+    padding-top: 8px;
+  }
+  #app .review-workspace .notebook-navigation nav button {
+    justify-content: center;
+    gap: 4px;
+    padding: 10px 4px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  #app .review-workspace .notebook-topbar {
+    padding-top: 4px;
+    padding-bottom: 12px;
+  }
+}

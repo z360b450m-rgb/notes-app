@@ -1,11 +1,16 @@
 <script setup lang="ts">
+import { vDialogSurface } from '@/directives/dialogSurface'
 // @AI-NOTE: 图像裁剪器 —— 纯交互组件。裁剪后的 DataURL
 // 通过 emit 发送, 不在此存储或操作业务数据。
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 
-defineProps<{
-  imageSrc: string
-}>()
+withDefaults(
+  defineProps<{
+    imageSrc: string
+    confirmLabel?: string
+  }>(),
+  { confirmLabel: '裁剪并插入' },
+)
 
 const emit = defineEmits<{
   crop: [dataUrl: string]
@@ -217,6 +222,8 @@ onUnmounted(() => {
 <template>
   <!-- @AI-VIEW: DOM 可自由重构。样式仅限 Tailwind CSS 工具类。严禁内联 style 或自定义 CSS。 -->
   <div
+    v-dialog-surface="'图片裁剪'"
+    data-ui-dialog-layout="canvas"
     ref="containerRef"
     class="fixed inset-0 z-[60] bg-black/80 select-none"
     @pointerdown="onPointerDown"
@@ -285,22 +292,29 @@ onUnmounted(() => {
       class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-gray-900/90 backdrop-blur rounded-xl px-4 py-2.5 shadow-2xl border border-white/10"
     >
       <button
-        class="px-4 py-1.5 text-xs font-medium text-white/60 hover:text-white/90 transition-colors rounded-lg hover:bg-white/10"
+        data-ui-variant="default"
+        type="button"
+        data-dialog-cancel
+        class="ui-control px-4 py-1.5 text-xs font-medium text-white/60 hover:text-white/90 transition-colors rounded-lg hover:bg-white/10"
         @click="emit('cancel')"
       >
         返回
       </button>
       <button
-        class="px-4 py-1.5 text-xs font-medium text-white/60 hover:text-white/90 transition-colors rounded-lg hover:bg-white/10"
+        data-ui-variant="default"
+        type="button"
+        class="ui-control px-4 py-1.5 text-xs font-medium text-white/60 hover:text-white/90 transition-colors rounded-lg hover:bg-white/10"
         @click="emit('skip')"
       >
         跳过裁剪
       </button>
       <button
-        class="px-5 py-1.5 text-xs font-semibold text-white bg-accent hover:bg-accent/90 transition-colors rounded-lg active:scale-95"
+        data-ui-variant="primary"
+        type="button"
+        class="ui-control px-5 py-1.5 text-xs font-semibold text-white bg-accent hover:bg-accent/90 transition-colors rounded-lg active:scale-95"
         @click="doCrop"
       >
-        裁剪并插入
+        {{ confirmLabel }}
       </button>
     </div>
 

@@ -25,19 +25,18 @@ interface KeyboardActions {
 export function useKeyboard(actions: KeyboardActions) {
   function handler(e: KeyboardEvent) {
     const ctrl = e.ctrlKey || e.metaKey
-    const key = e.getModifierState('CapsLock') && e.key.length === 1 ? e.key.toLowerCase() : e.key
 
-    if (ctrl && key === 'n') {
+    if (ctrl && e.key === 'n') {
       e.preventDefault()
       actions.onCreate()
       return
     }
-    if (ctrl && key === 's') {
+    if (ctrl && e.key === 's') {
       e.preventDefault()
       actions.onSave()
       return
     }
-    if (ctrl && key === 'r') {
+    if (ctrl && e.key === 'r') {
       e.preventDefault()
       actions.onToggleReveal()
       return
@@ -61,12 +60,12 @@ export function useKeyboard(actions: KeyboardActions) {
 
     // Drawing undo/redo
     if (actions.drawingEnabled?.value) {
-      if (ctrl && key === 'z') {
+      if (ctrl && e.key === 'z') {
         e.preventDefault()
         actions.onUndo?.()
         return
       }
-      if (ctrl && key === 'y') {
+      if (ctrl && e.key === 'y') {
         e.preventDefault()
         actions.onRedo?.()
         return
@@ -75,7 +74,7 @@ export function useKeyboard(actions: KeyboardActions) {
 
     // S/D to navigate prev/next (edit mode, not typing)
     if (actions.mode?.value === 'edit' && !actions.drawingEnabled?.value) {
-      if (key === 's' && !ctrl) {
+      if (e.key === 's' && !ctrl) {
         const el = document.activeElement
         if (!el || !(el as HTMLElement).isContentEditable) {
           const tag = (el as HTMLElement)?.tagName
@@ -86,7 +85,7 @@ export function useKeyboard(actions: KeyboardActions) {
           }
         }
       }
-      if (key === 'd' && !ctrl) {
+      if (e.key === 'd' && !ctrl) {
         const el = document.activeElement
         if (!el || !(el as HTMLElement).isContentEditable) {
           const tag = (el as HTMLElement)?.tagName
@@ -95,37 +94,6 @@ export function useKeyboard(actions: KeyboardActions) {
             actions.onNext()
             return
           }
-        }
-      }
-    }
-
-    // Review mode shortcuts
-    if (actions.mode?.value === 'review') {
-      // Space to reveal answer
-      if (e.key === ' ' && !e.ctrlKey && !e.metaKey) {
-        const el = document.activeElement
-        if (
-          !el ||
-          (el as HTMLElement).tagName === 'BODY' ||
-          (el as HTMLElement).tagName === 'DIV'
-        ) {
-          e.preventDefault()
-          if (!actions.answered?.value) {
-            actions.revealAnswer?.()
-          }
-        }
-      }
-      // Number keys to rate
-      if (!e.ctrlKey && !e.metaKey && actions.answered?.value) {
-        if (e.key === '1') {
-          e.preventDefault()
-          actions.rateCard?.('forgot')
-        } else if (e.key === '2') {
-          e.preventDefault()
-          actions.rateCard?.('unfamiliar')
-        } else if (e.key === '3') {
-          e.preventDefault()
-          actions.rateCard?.('mastered')
         }
       }
     }

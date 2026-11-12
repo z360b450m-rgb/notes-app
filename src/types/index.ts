@@ -45,6 +45,8 @@ export interface QuestionGroup {
   drawings?: Record<string, string>
   createdAt: number
   updatedAt: number
+  /** Runtime-only marker: this row contains metadata, never save it as content. */
+  isSummary?: boolean
 }
 
 export interface NoteEntry {
@@ -57,6 +59,8 @@ export interface NoteEntry {
   subject: string
   source: string
   tags: string[]
+  // Optional user-defined folder inside the notebook. Missing means unfiled.
+  folder?: string
   sortOrder?: number
   createdAt: number
   updatedAt: number
@@ -84,6 +88,11 @@ export interface NoteEntry {
     wrongCount: number
     lastWrongAt: number
   }
+  /** Runtime-only list data. Repositories reject writes until content is loaded. */
+  isSummary?: boolean
+  questionPreview?: string
+  /** Explicitly incorrect review answers; never inferred from mastery ratings. */
+  wrongCount?: number
 }
 
 export interface ReviewLog {
@@ -102,6 +111,8 @@ export interface ReviewLog {
   sessionCompleted?: boolean
   elapsedMs?: number
   reviewNote?: string
+  /** Independently entered answer for this review; kept separate from source answers and notes. */
+  answerText?: string
 }
 
 /**

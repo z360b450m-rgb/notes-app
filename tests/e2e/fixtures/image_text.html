@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>图片转文字交互测试</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp, ref, reactive, h } from 'vue'
+      import NoteEditor from '/src/components/NoteEditor.vue'
+      import '/src/style.css'
+
+      const makeEntry = (id) => ({
+        id,
+        notebookId: 'ocr-book',
+        title: id,
+        question: '<p>前文后文</p>',
+        wrongAnswer: '',
+        correctAnswer: '',
+        subject: '',
+        source: '',
+        tags: [],
+        drawings: {},
+        createdAt: 1,
+        updatedAt: 1,
+        reviewCount: 0,
+        wrongCount: 0,
+        masteryLevel: 0,
+      })
+      createApp({
+        setup() {
+          const entries = reactive([makeEntry('one'), makeEntry('two')])
+          const current = ref(0)
+          const group = reactive({
+            id: 'group',
+            notebookId: 'ocr-book',
+            title: '材料',
+            material: '',
+            drawings: {},
+          })
+          const updates = ref(0)
+          return () =>
+            h('main', { style: 'height:100vh;display:flex;flex-direction:column' }, [
+              h(
+                'button',
+                { id: 'switch-entry', onClick: () => (current.value = 1 - current.value) },
+                '切换测试题目',
+              ),
+              h('output', { id: 'updates' }, String(updates.value)),
+              h(NoteEditor, {
+                entry: entries[current.value],
+                entries,
+                group,
+                groupEntries: [entries[current.value]],
+                answersHidden: false,
+                onUpdate: () => updates.value++,
+                style: 'flex:1;min-height:0',
+              }),
+            ])
+        },
+      }).mount('#app')
+    </script>
+  </body>
+</html>

@@ -1,17 +1,29 @@
 <script setup lang="ts">
 // @AI-NOTE: 复习面板组件 —— 复习流程由 useReview Hook 驱动。
 // 禁止在此实现 SRS 算法、间隔计算、直接操作复习日志存储。
-import { ref, watch, nextTick, computed } from 'vue'
+import { ref, watch, nextTick, computed, useId } from 'vue'
+import { RadioGroupRoot, RadioGroupItem } from 'reka-ui'
 import type { NoteEntry, QuestionGroup } from '@/types'
 import type { ReviewOutcome, SessionRecord } from '@/composables/useReview'
-import { getMasteryLabel } from '@/composables/useStats'
 import { sanitizeHtml, formatMcOptions } from '@/utils/sanitize'
 import { parseMultipleChoice } from '@/utils/multipleChoice'
+import { stripInternalLinks } from '@/utils/internalLinks'
+import { localMode } from '@/services/localMode'
+import {
+  canAdvanceReviewAttempt,
+  isReviewAttemptComplete,
+  type ReviewAttempt,
+} from '@/services/reviewGrading'
+import ReviewFollowupDialog from './ReviewFollowupDialog.vue'
 
 const props = defineProps<{
   entry: NoteEntry | undefined
   group?: QuestionGroup
   answered: boolean
+  submitting?: boolean
+  gradingAttempt?: ReviewAttempt | null
+  gradingError?: string
+  gradingLocked?: boolean
   elapsedMs: number
   progress: string
   progressPercent: number
@@ -32,53 +44,78 @@ const emit = defineEmits<{
   exitReview: []
   dismissSummary: []
   'mount-canvas': [el: HTMLElement, entryId: string, field: string]
+  'outcome-change': [outcome: ReviewOutcome]
+  explain: [text: string]
+  'next-review': []
+  'retry-grading': []
 }>()
 
-const showCorrect = ref(false)
-const note = ref('')
-const rated = ref(false)
+const answerText = ref('')
+const explanationText = ref('')
+const followupOpen = ref(false)
+const answerInputId = useId()
 const selectedChoice = ref<string | null>(null)
+const localRatings = [
+  { value: 'forgot', label: '完全未掌握' },
+  { value: 'unfamiliar', label: '不熟练' },
+  { value: 'mastered', label: '已掌握' },
+]
+const answerLocked = computed(() => props.gradingLocked || (localMode && props.answered))
 const summaryEntryId = ref<string | null>(null)
-const multipleChoice = computed(() =>
-  parseMultipleChoice(props.entry?.question || '', props.entry?.correctAnswer || ''),
+const canAdvance = computed(
+  () =>
+    isReviewAttemptComplete(props.gradingAttempt) &&
+    props.gradingAttempt?.entry_id === props.entry?.id,
 )
+const unjudged = computed(() => canAdvance.value && !canAdvanceReviewAttempt(props.gradingAttempt))
+const canDiscuss = computed(() => canAdvance.value)
+const isLastCard = computed(
+  () => !!props.entry && props.entry.id === props.reviewQueue[props.reviewQueue.length - 1]?.id,
+)
+const multipleChoice = computed(() =>
+  parseMultipleChoice(
+    stripInternalLinks(props.entry?.question || ''),
+    stripInternalLinks(props.entry?.correctAnswer || ''),
+  ),
+)
+const reviewOutcome = computed<ReviewOutcome>(() => {
+  const correctChoice = multipleChoice.value?.correctOption
+  return selectedChoice.value && correctChoice
+    ? {
+        selectedChoice: selectedChoice.value,
+        correctChoice,
+        isCorrect: selectedChoice.value === correctChoice,
+        answerText: answerText.value,
+      }
+    : { selectedChoice: selectedChoice.value ?? undefined, answerText: answerText.value }
+})
+watch(reviewOutcome, (outcome) => emit('outcome-change', outcome), { flush: 'sync' })
 const sanitizedChoiceStem = computed(() =>
   sanitizeHtml(formatMcOptions(multipleChoice.value?.stem || '')),
 )
 
 const sanitizedQuestion = computed(
   () =>
-    sanitizeHtml(formatMcOptions(props.entry?.question || '')) ||
+    sanitizeHtml(formatMcOptions(stripInternalLinks(props.entry?.question || ''))) ||
     "<span class='text-gray-300'>无题目内容</span>",
-)
-const sanitizedWrongAnswer = computed(
-  () =>
-    sanitizeHtml(formatMcOptions(props.entry?.wrongAnswer || '')) ||
-    "<span class='text-gray-300 dark:text-[#4a4a48]'>无内容</span>",
-)
-const sanitizedCorrectAnswer = computed(
-  () =>
-    sanitizeHtml(formatMcOptions(props.entry?.correctAnswer || '')) ||
-    "<span class='text-gray-300 dark:text-[#4a4a48]'>无内容</span>",
 )
 const sanitizedMaterial = computed(
   () =>
-    sanitizeHtml(props.group?.material || '') ||
+    sanitizeHtml(stripInternalLinks(props.group?.material || '')) ||
     "<span class='text-gray-300 dark:text-[#4a4a48]'>无公共材料</span>",
 )
 
 function sanitizedFallback(html: string | undefined, fallback: string): string {
-  return sanitizeHtml(html || '') || fallback
+  return sanitizeHtml(stripInternalLinks(html || '')) || fallback
 }
 const questionContentRef = ref<HTMLDivElement | null>(null)
 const materialContentRef = ref<HTMLDivElement | null>(null)
-const wrongContentRef = ref<HTMLDivElement | null>(null)
-const correctContentRef = ref<HTMLDivElement | null>(null)
 watch(
   () => props.entry,
   () => {
-    showCorrect.value = false
-    note.value = ''
+    answerText.value = ''
+    explanationText.value = ''
+    followupOpen.value = false
     selectedChoice.value = null
     nextTick(() => {
       if (questionContentRef.value && props.entry?.id) {
@@ -86,12 +123,6 @@ watch(
       }
       if (materialContentRef.value && props.entry?.id && props.group) {
         emit('mount-canvas', materialContentRef.value, props.entry.id, 'material')
-      }
-      if (wrongContentRef.value && props.entry?.id) {
-        emit('mount-canvas', wrongContentRef.value, props.entry.id, 'wrongAnswer')
-      }
-      if (correctContentRef.value && props.entry?.id) {
-        emit('mount-canvas', correctContentRef.value, props.entry.id, 'correctAnswer')
       }
     })
   },
@@ -108,82 +139,24 @@ watch(
 )
 
 function selectChoice(key: string) {
-  if (selectedChoice.value) return
+  if (props.submitting || answerLocked.value) return
   selectedChoice.value = key
-  reveal()
 }
 
 function choiceClass(key: string): string {
   const selected = selectedChoice.value
-  const correct = multipleChoice.value?.correctOption
-  if (!selected) {
-    return 'border-gray-200 dark:border-[#3a3a37] bg-white dark:bg-[#1e1e1c] hover:border-accent/50 hover:bg-accent/5'
-  }
-  if (!correct) {
-    return key === selected
-      ? 'border-accent bg-accent/5 text-accent dark:border-accent/70 dark:bg-accent/10'
-      : 'border-gray-100 dark:border-[#2e2e2c] bg-gray-50/70 dark:bg-[#1a1a18] opacity-60'
-  }
-  if (key === correct) {
-    return 'border-emerald-400 bg-emerald-50 dark:border-emerald-500/60 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-200'
-  }
-  if (key === selected) {
-    return 'border-red-400 bg-red-50 dark:border-red-500/60 dark:bg-red-500/15 text-red-800 dark:text-red-200'
-  }
-  return 'border-gray-100 dark:border-[#2e2e2c] bg-gray-50/70 dark:bg-[#1a1a18] opacity-60'
+  return key === selected
+    ? 'border-accent bg-accent/5 text-accent dark:border-accent/70 dark:bg-accent/10'
+    : 'border-gray-200 dark:border-[#3a3a37] bg-white dark:bg-[#1e1e1c] hover:border-accent/50 hover:bg-accent/5'
 }
 
-function reveal() {
-  showCorrect.value = true
-  rated.value = false
-  emit('reveal')
-}
-
-function showWrong() {
-  showCorrect.value = false
-}
-
-function rate(r: string, n: string) {
-  rated.value = true
-  const correctChoice = multipleChoice.value?.correctOption
-  const outcome: ReviewOutcome | undefined =
-    selectedChoice.value && correctChoice
-      ? {
-          selectedChoice: selectedChoice.value,
-          correctChoice,
-          isCorrect: selectedChoice.value === correctChoice,
-        }
-      : undefined
-  emit('rate', r, n, outcome)
-}
-
-const customRatings = [
-  {
-    r: 'forgot',
-    key: '1',
-    label: '完全未掌握',
-    desc: '重新开始',
-    color: 'bg-red-500 hover:bg-red-600',
-  },
-  {
-    r: 'unfamiliar',
-    key: '2',
-    label: '不熟练',
-    desc: '维持当前等级',
-    color: 'bg-amber-500 hover:bg-amber-600',
-  },
-  {
-    r: 'mastered',
-    key: '3',
-    label: '已掌握',
-    desc: '晋级',
-    color: 'bg-emerald-500 hover:bg-emerald-600',
-  },
-]
-
-function currentMasteryHint(): string {
-  if (!props.entry) return ''
-  return `当前: ${getMasteryLabel(props.entry)}`
+function submitAnswer() {
+  if (props.gradingLocked) {
+    emit('retry-grading')
+    return
+  }
+  if (props.submitting || (!answerText.value.trim() && !selectedChoice.value)) return
+  emit('rate', 'submitted', '', reviewOutcome.value)
 }
 
 function formatTime(ms: number): string {
@@ -236,6 +209,10 @@ function ratingLabel(q: number | string): string {
       forgot: '完全未掌握',
       unfamiliar: '不熟练',
       mastered: '已掌握',
+      submitted: '已作答',
+      agent_correct: '答对',
+      agent_incorrect: '答错',
+      agent_unjudged: '待核对',
     }
     return map[q] || q
   }
@@ -248,6 +225,8 @@ function ratingColor(q: number | string): string {
       forgot: '#ef4444',
       unfamiliar: '#f59e0b',
       mastered: '#22c55e',
+      agent_correct: '#22c55e',
+      agent_incorrect: '#ef4444',
     }
     return map[q] || '#9ca3af'
   }
@@ -286,7 +265,13 @@ function ratingColor(q: number | string): string {
         <div class="w-full max-w-lg pb-10">
           <div v-if="summaryEntry" class="flex flex-col gap-3">
             <div class="flex items-center justify-between">
-              <button class="text-xs text-accent hover:underline" @click="closeSummaryEntry">
+              <button
+                data-ui-variant="text"
+                type="button"
+                data-dialog-cancel
+                class="ui-control text-xs text-accent hover:underline"
+                @click="closeSummaryEntry"
+              >
                 ← 返回列表
               </button>
               <span class="text-[11px] text-gray-400 dark:text-brand-mid">{{
@@ -303,6 +288,19 @@ function ratingColor(q: number | string): string {
               />
             </div>
             <div
+              v-if="
+                sessionRecords.find((record) => record.entryId === summaryEntry?.id)?.answerText
+              "
+              class="rounded-xl border border-[var(--neo-line)] p-4"
+            >
+              <div class="mb-2 text-xs font-semibold text-accent">本次作答</div>
+              <p class="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                {{
+                  sessionRecords.find((record) => record.entryId === summaryEntry?.id)?.answerText
+                }}
+              </p>
+            </div>
+            <div
               class="rounded-xl border border-red-100 bg-red-50/60 p-4 dark:border-red-500/20 dark:bg-red-500/10"
             >
               <div class="mb-2 text-xs font-semibold text-red-600 dark:text-red-400">
@@ -312,6 +310,25 @@ function ratingColor(q: number | string): string {
                 class="preserve-input-format text-sm leading-relaxed text-gray-800 dark:text-brand-light-gray"
                 v-html="summaryEntryHtml(summaryEntry, 'wrongAnswer')"
               />
+            </div>
+            <div
+              v-if="
+                sessionRecords.find((record) => record.entryId === summaryEntry?.id)?.gradeComment
+              "
+              class="rounded-xl border border-gray-100 bg-white p-4 dark:border-[#2e2e2c] dark:bg-[#141413]"
+            >
+              <div class="mb-2 text-xs font-semibold text-accent">解题理由与智能点评</div>
+              <p class="whitespace-pre-wrap break-words text-sm">
+                {{
+                  sessionRecords.find((record) => record.entryId === summaryEntry?.id)
+                    ?.explanationText
+                }}
+              </p>
+              <p class="mt-2 whitespace-pre-wrap break-words text-sm">
+                {{
+                  sessionRecords.find((record) => record.entryId === summaryEntry?.id)?.gradeComment
+                }}
+              </p>
             </div>
             <div
               class="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10"
@@ -328,9 +345,10 @@ function ratingColor(q: number | string): string {
 
           <div v-else class="flex flex-col gap-2">
             <button
+              type="button"
               v-for="(rec, i) in sessionRecords"
               :key="rec.entryId"
-              class="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 text-left transition-colors hover:border-accent/40 hover:bg-accent/5 dark:border-[#2e2e2c] dark:bg-[#141413] dark:hover:bg-accent/10"
+              class="ui-choice flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 text-left transition-colors hover:border-accent/40 hover:bg-accent/5 dark:border-[#2e2e2c] dark:bg-[#141413] dark:hover:bg-accent/10"
               @click="openSummaryEntry(rec.entryId)"
             >
               <span class="w-5 text-[11px] tabular-nums text-gray-300 dark:text-[#4a4a48]">{{
@@ -349,9 +367,11 @@ function ratingColor(q: number | string): string {
                   <span class="text-[10px] text-gray-400 dark:text-brand-mid">{{
                     entryById(rec.entryId)?.subject || ''
                   }}</span>
-                  <span v-if="rec.isCorrect === false" class="text-[10px] text-red-500"
-                    >选 {{ rec.selectedChoice }}，正确 {{ rec.correctChoice }}</span
-                  >
+                  <span v-if="rec.isCorrect === false" class="text-[10px] text-red-500">{{
+                    rec.selectedChoice && rec.correctChoice
+                      ? `选 ${rec.selectedChoice}，正确 ${rec.correctChoice}`
+                      : '本次答错'
+                  }}</span>
                 </div>
               </div>
               <span class="text-[11px] tabular-nums text-gray-400 dark:text-brand-mid">{{
@@ -367,7 +387,10 @@ function ratingColor(q: number | string): string {
         </div>
 
         <button
-          class="px-6 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:brightness-110 transition-all active:scale-95 mb-10"
+          data-ui-variant="default"
+          type="button"
+          data-dialog-cancel
+          class="ui-control px-6 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:brightness-110 transition-all active:scale-95 mb-10"
           @click="emit('dismissSummary')"
         >
           返回编辑
@@ -451,15 +474,23 @@ function ratingColor(q: number | string): string {
                     class="preserve-input-format text-base leading-relaxed md-content"
                     v-html="sanitizedChoiceStem"
                   />
-                  <div class="mt-4 grid gap-2">
-                    <button
+                  <RadioGroupRoot
+                    class="mt-4 grid gap-2"
+                    orientation="vertical"
+                    aria-label="选择答案"
+                    :model-value="selectedChoice ?? undefined"
+                    :disabled="submitting || answerLocked"
+                    @update:model-value="selectChoice"
+                  >
+                    <RadioGroupItem
+                      as="button"
+                      :value="option.key"
                       v-for="option in multipleChoice.options"
                       :key="option.key"
                       type="button"
-                      class="w-full flex items-start gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-all duration-200 disabled:cursor-default"
+                      class="ui-choice w-full flex items-start gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-all duration-200 disabled:cursor-default"
                       :class="choiceClass(option.key)"
-                      :disabled="!!selectedChoice"
-                      @click="selectChoice(option.key)"
+                      :disabled="submitting || answerLocked"
                     >
                       <span
                         class="w-6 h-6 rounded-full border border-current flex items-center justify-center text-xs font-bold flex-shrink-0"
@@ -469,25 +500,8 @@ function ratingColor(q: number | string): string {
                         class="preserve-input-format md-content leading-relaxed"
                         v-html="sanitizeHtml(formatMcOptions(option.content))"
                       />
-                    </button>
-                  </div>
-                  <p
-                    v-if="selectedChoice"
-                    class="mt-3 text-xs font-medium"
-                    :class="
-                      selectedChoice === multipleChoice.correctOption
-                        ? 'text-emerald-600 dark:text-emerald-300'
-                        : 'text-red-600 dark:text-red-300'
-                    "
-                  >
-                    {{
-                      !multipleChoice.correctOption
-                        ? `已选择 ${selectedChoice}，此题尚未设置正确答案，无法自动判定对错。`
-                        : selectedChoice === multipleChoice.correctOption
-                          ? '回答正确，请在下方记录掌握程度。'
-                          : `回答错误，正确选项是 ${multipleChoice.correctOption}。请查看解析后记录掌握程度。`
-                    }}
-                  </p>
+                    </RadioGroupItem>
+                  </RadioGroupRoot>
                 </div>
                 <div
                   v-else
@@ -497,116 +511,167 @@ function ratingColor(q: number | string): string {
               </div>
             </div>
           </div>
-
-          <!-- Wrong answer: expanded by default, clickable header when collapsed -->
-          <div
-            class="flex flex-col overflow-hidden rounded-lg border transition-all duration-300"
-            :class="
-              !showCorrect
-                ? 'flex-1 min-h-0 bg-red-50 border-red-100 dark:bg-red-500/10 dark:border-red-500/20'
-                : 'flex-shrink-0 bg-red-50/30 dark:bg-red-500/5 border-red-100/50 dark:border-red-500/10 cursor-pointer hover:brightness-[0.97]'
-            "
-            @click="showCorrect ? showWrong() : undefined"
-          >
-            <div
-              class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-red-600 dark:text-red-400 border-b border-red-100 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10 flex-shrink-0"
-            >
-              <span class="w-2 h-2 rounded-full bg-red-400" />
-              错误答案
-              <span v-if="showCorrect" class="ml-auto text-[10px] text-red-500 dark:text-red-400"
-                >点击查看</span
-              >
-            </div>
-            <div v-if="!showCorrect" class="flex-1 overflow-y-auto">
-              <div ref="wrongContentRef" :style="{ position: 'relative', minHeight: '100%' }">
-                <div
-                  class="preserve-input-format px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
-                  v-html="sanitizedWrongAnswer"
-                />
-              </div>
-            </div>
-            <div v-else class="flex items-center justify-center py-4">
-              <span class="text-sm font-medium text-red-500 dark:text-red-400"
-                >点击显示错误答案</span
-              >
-            </div>
-          </div>
-
-          <!-- Correct answer: collapsed by default, clickable header when collapsed -->
-          <div
-            class="flex flex-col overflow-hidden rounded-lg border transition-all duration-300"
-            :class="
-              showCorrect
-                ? 'flex-1 min-h-0 bg-emerald-50 border-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/20'
-                : 'flex-shrink-0 bg-emerald-50 border-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/20 cursor-pointer hover:brightness-[0.97]'
-            "
-            @click="!showCorrect ? reveal() : undefined"
-          >
-            <div
-              class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 border-b border-emerald-100 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10 flex-shrink-0"
-            >
-              <span class="w-2 h-2 rounded-full bg-emerald-400" />
-              正确答案
-              <span
-                v-if="!showCorrect"
-                class="ml-auto text-[10px] text-emerald-500 dark:text-emerald-400"
-                >点击查看</span
-              >
-            </div>
-            <div v-if="showCorrect" class="flex-1 overflow-y-auto">
-              <div ref="correctContentRef" :style="{ position: 'relative', minHeight: '100%' }">
-                <div
-                  class="preserve-input-format px-3.5 py-3 text-base leading-relaxed md-content text-gray-800 dark:text-brand-light-gray"
-                  v-html="sanitizedCorrectAnswer"
-                />
-              </div>
-            </div>
-            <div v-else class="flex items-center justify-center py-4">
-              <span class="text-sm font-medium text-emerald-500 dark:text-emerald-400"
-                >点击显示正确答案</span
-              >
-            </div>
-          </div>
         </div>
       </div>
 
-      <!-- Review note -->
-      <div v-if="answered && !rated" class="flex-shrink-0 flex flex-col gap-1.5">
-        <label class="text-[11px] font-semibold text-gray-400 dark:text-brand-mid">复习批注</label>
-        <textarea
-          v-model="note"
-          class="w-full h-20 resize-none rounded-lg border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#1e1e1c] px-3 py-2 text-sm text-gray-800 dark:text-brand-light-gray outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all placeholder:text-gray-300 dark:placeholder:text-gray-600"
-          placeholder="记录这次复习的收获或思路…"
-        />
-      </div>
-
-      <!-- Current mastery hint -->
-      <div
-        v-if="answered && !rated"
-        class="flex-shrink-0 text-[11px] text-gray-400 dark:text-brand-mid text-center"
-      >
-        {{ currentMasteryHint() }}
-      </div>
-
-      <!-- Rating buttons -->
-      <div v-if="answered && !rated" class="flex-shrink-0 flex gap-2">
-        <button
-          v-for="r in customRatings"
-          :key="r.r"
-          class="flex-1 flex flex-col items-center gap-0.5 py-2.5 rounded-lg text-white text-xs font-medium transition-all hover:brightness-110 active:scale-[0.97]"
-          :class="r.color"
-          :title="`按 ${r.key} —— ${r.desc}`"
-          @click="rate(r.r, note)"
+      <!-- Independent answer, available before revealing the reference answer. -->
+      <div class="flex-shrink-0 flex flex-col gap-1.5">
+        <label
+          :for="answerInputId"
+          class="text-[11px] font-semibold text-gray-400 dark:text-brand-mid"
+          >我的作答</label
         >
-          <span class="text-lg font-bold">{{ r.key }}</span>
-          <span class="text-[11px]">{{ r.label }}</span>
-          <span class="text-[10px] opacity-70">{{ r.desc }}</span>
+        <textarea
+          :id="answerInputId"
+          v-model="answerText"
+          data-testid="review-answer-input"
+          maxlength="20000"
+          :disabled="submitting || answerLocked"
+          class="ui-field w-full h-20 resize-none rounded-lg border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#1e1e1c] px-3 py-2 text-sm text-gray-800 dark:text-brand-light-gray outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all placeholder:text-gray-300 dark:placeholder:text-gray-600"
+          placeholder="请输入本次作答，可分行写出解题步骤…"
+        />
+        <p v-if="!localMode" class="text-[11px] text-gray-400 dark:text-brand-mid">
+          只选答案时先解释一次；也可将答案和解析一起提交。判完可继续追问或进入下一题。
+        </p>
+      </div>
+
+      <section
+        v-if="gradingAttempt || gradingError"
+        data-testid="review-grading-feedback"
+        class="flex-shrink-0 max-h-64 overflow-y-auto rounded-xl border border-gray-200 dark:border-[#2e2e2c] bg-white dark:bg-[#1e1e1c] p-3 text-sm"
+      >
+        <p class="text-xs font-semibold text-accent">智能判卷 · AI 建议</p>
+        <p
+          v-if="gradingAttempt"
+          data-testid="review-grade-comment"
+          class="mt-2 whitespace-pre-wrap text-gray-800 dark:text-brand-light-gray"
+        >
+          {{ gradingAttempt.comment }}
+        </p>
+        <p
+          v-if="!canAdvance && gradingAttempt?.followup_question"
+          class="mt-2 text-gray-500 dark:text-brand-mid"
+        >
+          {{ gradingAttempt.followup_question }}
+        </p>
+        <p v-if="gradingError" role="alert" class="mt-2 text-rose-600 dark:text-rose-400">
+          {{ gradingError }}
+        </p>
+        <p v-if="unjudged" role="status" class="mt-3 text-xs text-amber-700 dark:text-amber-300">
+          本题已完成一次核对，结果暂不确定，不计入答对或答错。可继续追问或进入下一题。
+        </p>
+        <template v-if="gradingAttempt?.status === 'awaiting_explanation' && !canAdvance">
+          <label for="review-explanation" class="mt-3 block text-xs text-gray-500">解题理由</label>
+          <textarea
+            id="review-explanation"
+            v-model="explanationText"
+            data-testid="review-explanation-input"
+            maxlength="20000"
+            :disabled="submitting"
+            class="ui-field mt-1 h-20 w-full resize-none rounded-lg border border-gray-200 bg-transparent p-2 dark:border-[#2e2e2c]"
+            placeholder="说明你为什么选择这个答案，提交后只判断一次…"
+          />
+          <div class="mt-2 flex justify-end">
+            <button
+              data-ui-variant="primary"
+              data-testid="submit-review-explanation"
+              type="button"
+              :disabled="submitting || !explanationText.trim()"
+              class="ui-control rounded-lg bg-accent px-3 py-2 text-xs text-white disabled:opacity-50"
+              @click="emit('explain', explanationText)"
+            >
+              {{ submitting ? '正在核对…' : '提交解题理由' }}
+            </button>
+          </div>
+        </template>
+        <div v-if="canAdvance" class="mt-3 border-t border-gray-200 pt-3 dark:border-[#2e2e2c]">
+          <p class="mb-2 text-xs font-semibold text-accent">参考答案与解析</p>
+          <div
+            class="md-content break-words"
+            v-html="sanitizedFallback(entry.correctAnswer, '暂无参考答案')"
+          />
+        </div>
+      </section>
+
+      <template v-if="localMode">
+        <button
+          v-if="!answered"
+          type="button"
+          data-ui-variant="primary"
+          class="ui-control flex-shrink-0 self-end rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-white"
+          @click="emit('reveal')"
+        >
+          查看参考答案
+        </button>
+        <section
+          v-else
+          class="min-h-0 shrink overflow-y-auto rounded-xl border border-gray-200 p-3 dark:border-[#2e2e2c]"
+        >
+          <p class="mb-2 text-xs font-semibold text-accent">参考答案与解析</p>
+          <div class="md-content break-words" v-html="sanitizedFallback(entry.correctAnswer, '暂无参考答案')" />
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button
+              v-for="rating in localRatings"
+              :key="rating.value"
+              type="button"
+              data-ui-variant="default"
+              class="ui-control rounded-lg border border-gray-200 px-4 py-2 text-sm dark:border-[#2e2e2c]"
+              @click="emit('rate', rating.value, '', reviewOutcome)"
+            >
+              {{ rating.label }}
+            </button>
+          </div>
+        </section>
+      </template>
+
+      <button
+        data-ui-variant="primary"
+        v-if="!localMode && !gradingAttempt"
+        type="button"
+        data-testid="submit-review-answer"
+        class="ui-control flex-shrink-0 self-end rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+        :disabled="submitting || (!gradingLocked && !answerText.trim() && !selectedChoice)"
+        @click="submitAnswer"
+      >
+        {{ submitting ? '正在判卷…' : gradingLocked ? '重试提交' : '提交作答' }}
+      </button>
+
+      <div v-if="canDiscuss" class="flex flex-shrink-0 flex-wrap justify-end gap-2">
+        <button
+          data-ui-variant="default"
+          type="button"
+          data-testid="continue-review-discussion"
+          :disabled="submitting"
+          @click="followupOpen = true"
+          class="ui-control rounded-lg border border-gray-200 px-5 py-2.5 text-sm dark:border-[#2e2e2c] disabled:opacity-50"
+        >
+          继续追问
+        </button>
+        <button
+          v-if="canAdvance"
+          data-ui-variant="primary"
+          type="button"
+          data-testid="next-graded-review"
+          :disabled="submitting"
+          @click="emit('next-review')"
+          class="ui-control rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {{ isLastCard ? '结束复习' : '下一题' }}
         </button>
       </div>
+      <ReviewFollowupDialog
+        v-if="followupOpen && canDiscuss && gradingAttempt"
+        :key="gradingAttempt.attempt_id"
+        :entry="entry"
+        :attempt="gradingAttempt"
+        @close="followupOpen = false"
+      />
 
       <!-- Exit review -->
       <button
-        class="flex-shrink-0 self-center px-3 py-1.5 rounded-md border border-gray-100 dark:border-[#2e2e2c] text-xs text-gray-400 dark:text-brand-mid hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1e1e1c] transition-all duration-200 ease-out active:scale-95"
+        data-ui-variant="default"
+        type="button"
+        class="ui-control flex-shrink-0 self-center px-3 py-1.5 rounded-md border border-gray-100 dark:border-[#2e2e2c] text-xs text-gray-400 dark:text-brand-mid hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1e1e1c] transition-all duration-200 ease-out active:scale-95"
         @click="emit('exitReview')"
       >
         退出复习

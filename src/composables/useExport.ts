@@ -6,10 +6,27 @@ import type { NoteEntry } from '@/types'
 // 触发打印。生成内容的结构变更必须在此处实现, 不可在组件中拼接。
 // ===================================================================
 export function useExport(onToast: (msg: string) => void) {
-  function exportPDF(entries: NoteEntry[]) {
+  async function exportPDF(entries: NoteEntry[], loadContent?: () => Promise<NoteEntry[]>) {
     if (entries.length === 0) {
       onToast('暂无错题可导出')
       return
+    }
+
+    // Open during the user gesture; loading details later must not trigger popup blocking.
+    const w = window.open('', '_blank')
+    if (!w) {
+      onToast('弹窗被拦截，请允许本站弹窗后重试')
+      return
+    }
+    if (loadContent) {
+      w.document.body.textContent = '正在准备题目内容…'
+      try {
+        entries = await loadContent()
+      } catch {
+        w.close()
+        onToast('部分题目内容无法加载，请恢复连接后重试导出')
+        return
+      }
     }
 
     // Group by subject
@@ -71,11 +88,6 @@ ${items
 </body>
 </html>`
 
-    const w = window.open('', '_blank')
-    if (!w) {
-      onToast('弹窗被拦截，请允许本站弹窗后重试')
-      return
-    }
     w.document.write(html)
     w.document.close()
     w.onload = () => {

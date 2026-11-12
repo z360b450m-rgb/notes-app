@@ -1,47 +1,45 @@
 <script setup lang="ts">
-// @AI-NOTE: 删除确认对话框 —— 纯 UI 组件。删除逻辑由父组件通过
-// emit 事件驱动。禁止在此直接执行删除操作。
-import { useModalAnimations } from '@/composables/useModalAnimations'
+import { computed } from 'vue'
+import UiModal from './UiModal.vue'
 
-defineProps<{ visible: boolean }>()
-const emit = defineEmits<{
-  confirm: []
-  cancel: []
-}>()
-
-const { enterModal, leaveModal } = useModalAnimations()
+const props = defineProps<{ visible: boolean; count?: number; busy?: boolean; error?: string }>()
+const emit = defineEmits<{ confirm: []; cancel: [] }>()
+const batch = computed(() => props.count !== undefined)
 </script>
 
 <template>
-  <!-- @AI-VIEW: DOM 可自由重构。样式仅限 Tailwind CSS 工具类。严禁内联 style 或自定义 CSS。 -->
-  <Transition :css="false" @enter="enterModal" @leave="leaveModal">
-    <div
-      v-if="visible"
-      class="modal-overlay fixed inset-0 bg-black/30 flex items-center justify-center z-[999]"
-      @click.self="emit('cancel')"
-    >
-      <div
-        class="modal-dialog bg-white dark:bg-[#141413] rounded-lg p-5 shadow-xl max-w-[380px] w-[90%]"
+  <UiModal
+    :visible="visible"
+    :title="batch ? '批量删除' : '删除错题'"
+    :description="
+      batch
+        ? `确定删除选中的 ${count} 条错题吗？此操作不可撤销。`
+        : '确定删除这道错题吗？此操作不可撤销。'
+    "
+    :busy="busy"
+    :error="error"
+    danger
+    @cancel="emit('cancel')"
+  >
+    <template #actions>
+      <button
+        type="button"
+        class="ui-button"
+        data-dialog-cancel
+        :disabled="busy"
+        @click="emit('cancel')"
       >
-        <h3 class="text-base font-semibold mb-1.5">删除错题</h3>
-        <p class="text-gray-400 dark:text-brand-mid text-sm mb-4">
-          确定要删除这道错题吗？此操作不可撤销。
-        </p>
-        <div class="flex gap-2 justify-end">
-          <button
-            class="px-3.5 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-brand-light-gray hover:bg-gray-100 dark:hover:bg-[#2a2a28] dark:bg-[#1e1e1c] transition-all duration-200 ease-out active:scale-95"
-            @click="emit('cancel')"
-          >
-            取消
-          </button>
-          <button
-            class="px-3.5 py-1.5 rounded-md text-sm font-medium bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900 transition-all duration-200 ease-out active:scale-95"
-            @click="emit('confirm')"
-          >
-            确认删除
-          </button>
-        </div>
-      </div>
-    </div>
-  </Transition>
+        取消
+      </button>
+      <button
+        type="button"
+        class="ui-button"
+        data-variant="danger"
+        :disabled="busy"
+        @click="emit('confirm')"
+      >
+        {{ busy ? '正在删除…' : batch ? `删除 ${count} 条` : '确认删除' }}
+      </button>
+    </template>
+  </UiModal>
 </template>

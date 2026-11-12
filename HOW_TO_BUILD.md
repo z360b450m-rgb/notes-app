@@ -1,6 +1,6 @@
 # 从零做一遍这个项目 · 完整流程清单
 
-把这套 **notes-app（Electron 错题本）+ RAG-AIAgent（云原生 RAG 服务）** 从空白机器一步一步搭起来要做什么，全在这。按顺序读。
+本文记录早期 Electron 错题本与 `RAG-AIAgent` 原型的搭建过程。启动当前仓库请使用 [README 的本地启动说明](README.md#local-development)。官网部署另见[官网维护与部署说明](docs/official-site.md)。
 
 ---
 

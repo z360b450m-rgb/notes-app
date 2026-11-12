@@ -5,6 +5,14 @@ export default {
   theme: {
     extend: {
       fontFamily: {
+        ui: [
+          '"Segoe UI"',
+          '"Microsoft YaHei"',
+          '"PingFang SC"',
+          '"Noto Sans SC"',
+          'system-ui',
+          'sans-serif',
+        ],
         sans: ['"Noto Sans SC"', 'Poppins', 'system-ui', '-apple-system', 'sans-serif'],
         display: ['Poppins', '"Noto Sans SC"', 'system-ui', 'sans-serif'],
         body: ['"Noto Sans SC"', 'Lora', 'Georgia', 'serif'],

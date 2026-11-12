@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { vDialogSurface } from '@/directives/dialogSurface'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import DOMPurify from 'dompurify'
+import MetadataSelect from '@/components/MetadataSelect.vue'
 import { useVocabularySpeech } from './useSpeech'
 import { vocabularyService } from './service'
 import type { ApkgInspection, VocabularyArchiveSummary, VocabularyProgress } from './service'
@@ -1039,7 +1041,10 @@ onUnmounted(() => {
       class="flex w-[250px] flex-shrink-0 flex-col border-r border-[#e8e6dc] bg-white p-5 dark:border-[#2e2e2c] dark:bg-[#1e1e1c]"
     >
       <button
-        class="mb-7 flex items-center gap-2 text-sm text-[#788c5d] hover:text-[#52633e]"
+        data-ui-variant="default"
+        type="button"
+        data-dialog-cancel
+        class="ui-control mb-7 flex items-center gap-2 text-sm text-[#788c5d] hover:text-[#52633e]"
         @click="closePanel"
       >
         <svg
@@ -1057,7 +1062,9 @@ onUnmounted(() => {
       <h1 class="text-xl font-bold">语言学习</h1>
       <p class="mt-1 truncate text-xs text-[#888]">{{ notebookName }} · 专用复习</p>
       <button
-        class="mt-6 flex w-full items-center justify-center gap-2 rounded-[8px] border border-[#d97757] px-4 py-2.5 text-sm font-medium text-[#d97757] hover:bg-[#fdf0e8] dark:hover:bg-[#2e2018]"
+        data-ui-variant="default"
+        type="button"
+        class="ui-control mt-6 flex w-full items-center justify-center gap-2 rounded-[8px] border border-[#d97757] px-4 py-2.5 text-sm font-medium text-[#d97757] hover:bg-[#fdf0e8] dark:hover:bg-[#2e2018]"
         title="使用系统浏览器打开 Anki 词库资源库"
         @click="openAnkiDeckLibrary"
       >
@@ -1076,7 +1083,9 @@ onUnmounted(() => {
         Anki 词库资源库
       </button>
       <button
-        class="mt-2 flex w-full items-center justify-center gap-2 rounded-[8px] bg-[#d97757] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#c86648]"
+        data-ui-variant="primary"
+        type="button"
+        class="ui-control mt-2 flex w-full items-center justify-center gap-2 rounded-[8px] bg-[#d97757] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#c86648]"
         @click="beginImport"
       >
         <svg
@@ -1094,7 +1103,9 @@ onUnmounted(() => {
         导入 APKG 词库
       </button>
       <button
-        class="mt-2 flex w-full items-center justify-center gap-2 rounded-[8px] border border-[#d97757] px-4 py-2.5 text-sm font-medium text-[#d97757] hover:bg-[#fdf0e8] dark:hover:bg-[#2e2018]"
+        data-ui-variant="default"
+        type="button"
+        class="ui-control mt-2 flex w-full items-center justify-center gap-2 rounded-[8px] border border-[#d97757] px-4 py-2.5 text-sm font-medium text-[#d97757] hover:bg-[#fdf0e8] dark:hover:bg-[#2e2018]"
         @click="openTextImport"
       >
         <svg
@@ -1111,17 +1122,20 @@ onUnmounted(() => {
         粘贴表格导入
       </button>
       <button
-        class="mt-2 flex w-full items-center justify-center gap-2 rounded-[8px] border border-[#788c5d] px-4 py-2.5 text-sm font-medium text-[#65784d] hover:bg-[#f3f6ef] dark:hover:bg-[#20251c]"
+        data-ui-variant="default"
+        type="button"
+        class="ui-control mt-2 flex w-full items-center justify-center gap-2 rounded-[8px] border border-[#788c5d] px-4 py-2.5 text-sm font-medium text-[#65784d] hover:bg-[#f3f6ef] dark:hover:bg-[#20251c]"
         @click="newArchiveOpen = true"
       >
-        <span class="text-lg leading-none">＋</span>
+        <span aria-hidden="true" class="text-lg leading-none">＋</span>
         新建词库
       </button>
       <div class="mt-6 min-h-0 flex-1 space-y-2 overflow-y-auto">
         <button
+          type="button"
           v-for="item in archives"
           :key="item.id"
-          class="w-full rounded-[8px] border px-3 py-2 text-left text-sm dark:border-[#333]"
+          class="ui-choice w-full rounded-[8px] border px-3 py-2 text-left text-sm dark:border-[#333]"
           :class="
             archive?.id === item.id
               ? 'border-[#d97757] bg-[#fdf0e8] dark:bg-[#2e2018]'
@@ -1179,13 +1193,15 @@ onUnmounted(() => {
               type="number"
               min="1"
               max="500"
-              class="w-20 rounded-[8px] border border-[#ddd] bg-white px-3 py-2 text-right text-[#141413] outline-none focus:border-[#d97757] dark:border-[#444]"
+              class="ui-field w-20 rounded-[8px] border border-[#ddd] bg-white px-3 py-2 text-right text-[#141413] outline-none focus:border-[#d97757] dark:border-[#444]"
               @change="saveDailyLimit"
             />
             词
           </label>
           <button
-            class="flex items-center gap-2 rounded-[8px] border border-[#ddd] px-3 py-2 text-sm text-[#777] hover:border-[#d97757] hover:text-[#d97757] dark:border-[#444] dark:text-[#aaa]"
+            data-ui-variant="default"
+            type="button"
+            class="ui-control flex items-center gap-2 rounded-[8px] border border-[#ddd] px-3 py-2 text-sm text-[#777] hover:border-[#d97757] hover:text-[#d97757] dark:border-[#444] dark:text-[#aaa]"
             @click="openCurveSettings"
           >
             <svg
@@ -1201,7 +1217,9 @@ onUnmounted(() => {
             复习曲线
           </button>
           <button
-            class="flex items-center gap-2 rounded-[8px] border border-[#ddd] px-3 py-2 text-sm text-[#777] hover:border-[#d97757] hover:text-[#d97757] dark:border-[#444] dark:text-[#aaa]"
+            data-ui-variant="default"
+            type="button"
+            class="ui-control flex items-center gap-2 rounded-[8px] border border-[#ddd] px-3 py-2 text-sm text-[#777] hover:border-[#d97757] hover:text-[#d97757] dark:border-[#444] dark:text-[#aaa]"
             @click="openVocabularyWords"
           >
             <svg
@@ -1217,14 +1235,19 @@ onUnmounted(() => {
             全部单词
           </button>
           <button
-            class="flex items-center gap-2 rounded-[8px] bg-[#788c5d] px-3 py-2 text-sm font-medium text-white hover:bg-[#65784d]"
+            data-ui-variant="default"
+            type="button"
+            class="ui-control flex items-center gap-2 rounded-[8px] bg-[#788c5d] px-3 py-2 text-sm font-medium text-white hover:bg-[#65784d]"
             @click="openAddWord"
           >
-            <span class="text-base leading-none">＋</span>
+            <span aria-hidden="true" class="text-base leading-none">＋</span>
             新增单词
           </button>
           <button
-            class="flex h-9 w-9 items-center justify-center rounded-[8px] border border-[#ddd] text-[#999] hover:border-red-400 hover:bg-red-50 hover:text-red-600 dark:border-[#444] dark:hover:bg-red-950/20"
+            data-ui-variant="danger-text"
+            type="button"
+            aria-label="删除当前词库"
+            class="ui-control flex h-9 w-9 items-center justify-center rounded-[8px] border border-[#ddd] text-[#999] hover:border-red-400 hover:bg-red-50 hover:text-red-600 dark:border-[#444] dark:hover:bg-red-950/20"
             title="删除当前词库"
             @click="deleteArchiveOpen = true"
           >
@@ -1306,7 +1329,8 @@ onUnmounted(() => {
         </div>
         <div class="mt-8 grid gap-4 md:grid-cols-3">
           <button
-            class="rounded-[8px] border border-[#e8e6dc] bg-white p-6 text-left hover:border-[#d97757] dark:border-[#333] dark:bg-[#1e1e1c]"
+            type="button"
+            class="ui-choice rounded-[8px] border border-[#e8e6dc] bg-white p-6 text-left hover:border-[#d97757] dark:border-[#333] dark:bg-[#1e1e1c]"
             @click="startTodaySession('learn')"
           >
             <strong class="block text-lg">开始今日复习</strong>
@@ -1315,7 +1339,8 @@ onUnmounted(() => {
             >
           </button>
           <button
-            class="rounded-[8px] border border-[#e8e6dc] bg-white p-6 text-left hover:border-[#d97757] dark:border-[#333] dark:bg-[#1e1e1c]"
+            type="button"
+            class="ui-choice rounded-[8px] border border-[#e8e6dc] bg-white p-6 text-left hover:border-[#d97757] dark:border-[#333] dark:bg-[#1e1e1c]"
             @click="startTodaySession('review', 'zh-to-en')"
           >
             <strong class="block text-lg">今日中 → 英</strong>
@@ -1324,7 +1349,8 @@ onUnmounted(() => {
             >
           </button>
           <button
-            class="rounded-[8px] border border-[#e8e6dc] bg-white p-6 text-left hover:border-[#d97757] dark:border-[#333] dark:bg-[#1e1e1c]"
+            type="button"
+            class="ui-choice rounded-[8px] border border-[#e8e6dc] bg-white p-6 text-left hover:border-[#d97757] dark:border-[#333] dark:bg-[#1e1e1c]"
             @click="startTodaySession('review', 'en-to-zh')"
           >
             <strong class="block text-lg">今日英 → 中</strong>
@@ -1335,7 +1361,8 @@ onUnmounted(() => {
         </div>
         <div class="mt-4 border-t border-[#e8e6dc] pt-4 dark:border-[#333]">
           <button
-            class="flex w-full items-center justify-between gap-3 text-left text-sm font-medium text-[#788c5d]"
+            data-ui-variant="default"
+            class="ui-control flex w-full items-center justify-between gap-3 text-left text-sm font-medium text-[#788c5d]"
             type="button"
             :aria-expanded="todayPreviewOpen"
             @click="todayPreviewOpen = !todayPreviewOpen"
@@ -1356,7 +1383,7 @@ onUnmounted(() => {
             <button
               v-for="(word, index) in todayPlanWords"
               :key="word.id"
-              class="flex min-w-0 items-center gap-3 rounded-[8px] border border-[#e8e6dc] bg-white px-3 py-2.5 text-left transition hover:border-[#d97757] hover:bg-[#fdfaf6] dark:border-[#333] dark:bg-[#1e1e1c] dark:hover:bg-[#2a2723]"
+              class="ui-choice flex min-w-0 items-center gap-3 rounded-[8px] border border-[#e8e6dc] bg-white px-3 py-2.5 text-left transition hover:border-[#d97757] hover:bg-[#fdfaf6] dark:border-[#333] dark:bg-[#1e1e1c] dark:hover:bg-[#2a2723]"
               type="button"
               @click="previewTodayWord(word.id)"
             >
@@ -1386,7 +1413,10 @@ onUnmounted(() => {
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-3">
             <button
-              class="flex items-center gap-1 text-sm text-[#788c5d]"
+              data-ui-variant="default"
+              type="button"
+              data-dialog-cancel
+              class="ui-control flex items-center gap-1 text-sm text-[#788c5d]"
               @click="view = 'library'"
             >
               <svg
@@ -1422,7 +1452,7 @@ onUnmounted(() => {
             <input
               :value="wordSearch"
               placeholder="搜索单词、释义、音标或标签"
-              class="w-full rounded-[8px] border border-[#ddd] bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-[#d97757] dark:border-[#444] dark:bg-[#1e1e1c]"
+              class="ui-field w-full rounded-[8px] border border-[#ddd] bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-[#d97757] dark:border-[#444] dark:bg-[#1e1e1c]"
               @input="updateWordSearch(($event.target as HTMLInputElement).value)"
             />
           </div>
@@ -1430,7 +1460,9 @@ onUnmounted(() => {
         <div v-if="vocabularyTags.length" class="mt-4 flex flex-wrap items-center gap-2">
           <span class="text-xs text-[#888]">标签筛选：</span>
           <button
-            class="rounded-full border px-2.5 py-1 text-xs transition-colors"
+            :aria-pressed="wordTagFilter === null"
+            type="button"
+            class="ui-choice rounded-full border px-2.5 py-1 text-xs transition-colors"
             :class="
               wordTagFilter === null
                 ? 'border-[#788c5d] bg-[#f3f6ef] text-[#52633e] dark:bg-[#20251c]'
@@ -1441,9 +1473,11 @@ onUnmounted(() => {
             全部
           </button>
           <button
+            :aria-pressed="wordTagFilter === tag"
+            type="button"
             v-for="tag in vocabularyTags"
             :key="tag"
-            class="rounded-full border px-2.5 py-1 text-xs transition-colors"
+            class="ui-choice rounded-full border px-2.5 py-1 text-xs transition-colors"
             :class="
               wordTagFilter === tag
                 ? 'border-[#788c5d] bg-[#f3f6ef] text-[#52633e] dark:bg-[#20251c]'
@@ -1492,10 +1526,20 @@ onUnmounted(() => {
             />
             <span class="text-xs text-[#888]">{{ wordStatus(word.id) }}</span>
             <div class="flex items-start gap-2 text-xs">
-              <button class="text-[#788c5d] hover:underline" @click="openEditWord(word)">
+              <button
+                data-ui-variant="text"
+                type="button"
+                class="ui-control text-[#788c5d] hover:underline"
+                @click="openEditWord(word)"
+              >
                 编辑
               </button>
-              <button class="text-red-500 hover:underline" @click="openDeleteWord(word)">
+              <button
+                data-ui-variant="danger-text"
+                type="button"
+                class="ui-control text-red-500 hover:underline"
+                @click="openDeleteWord(word)"
+              >
                 删除
               </button>
             </div>
@@ -1505,14 +1549,18 @@ onUnmounted(() => {
           <span>第 {{ wordPage }} / {{ wordPageCount }} 页</span>
           <div class="flex gap-2">
             <button
-              class="rounded-[8px] border border-[#ddd] px-3 py-1.5 disabled:opacity-40 dark:border-[#444]"
+              data-ui-variant="default"
+              type="button"
+              class="ui-control rounded-[8px] border border-[#ddd] px-3 py-1.5 disabled:opacity-40 dark:border-[#444]"
               :disabled="wordPage <= 1"
               @click="wordPage -= 1"
             >
               上一页
             </button>
             <button
-              class="rounded-[8px] border border-[#ddd] px-3 py-1.5 disabled:opacity-40 dark:border-[#444]"
+              data-ui-variant="default"
+              type="button"
+              class="ui-control rounded-[8px] border border-[#ddd] px-3 py-1.5 disabled:opacity-40 dark:border-[#444]"
               :disabled="wordPage >= wordPageCount"
               @click="wordPage += 1"
             >
@@ -1537,7 +1585,10 @@ onUnmounted(() => {
         <h2 class="mt-5 text-2xl font-bold">今日训练已完成</h2>
         <p class="mt-2 text-sm text-[#888]">本轮共完成 {{ sessionWords.length }} 个单词</p>
         <button
-          class="mt-6 rounded-[8px] bg-[#d97757] px-6 py-2.5 text-white"
+          data-ui-variant="default"
+          type="button"
+          data-dialog-cancel
+          class="ui-control mt-6 rounded-[8px] bg-[#d97757] px-6 py-2.5 text-white"
           @click="returnToLibrary"
         >
           返回词库
@@ -1546,10 +1597,12 @@ onUnmounted(() => {
 
       <section v-else-if="currentWord" class="relative mx-auto max-w-3xl px-12 sm:px-0">
         <button
-          class="absolute left-0 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-[#d97757]/30 bg-white/95 text-[#d97757] shadow-lg transition hover:scale-105 hover:bg-[#fdf0e8] disabled:cursor-not-allowed disabled:opacity-30 dark:bg-[#1e1e1c] dark:hover:bg-[#2e2018] sm:-left-16"
+          data-ui-variant="text"
+          type="button"
+          class="ui-control absolute left-0 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-[#d97757]/30 bg-white/95 text-[#d97757] shadow-lg transition hover:scale-105 hover:bg-[#fdf0e8] disabled:cursor-not-allowed disabled:opacity-30 dark:bg-[#1e1e1c] dark:hover:bg-[#2e2018] sm:-left-16"
           :disabled="currentIndex <= 0"
           title="上一个"
-          aria-label="上一个单词"
+          aria-label="上一词"
           @click="previousWord"
         >
           <svg
@@ -1564,10 +1617,12 @@ onUnmounted(() => {
           </svg>
         </button>
         <button
-          class="absolute right-0 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-[#d97757]/30 bg-white/95 text-[#d97757] shadow-lg transition hover:scale-105 hover:bg-[#fdf0e8] disabled:cursor-not-allowed disabled:opacity-30 dark:bg-[#1e1e1c] dark:hover:bg-[#2e2018] sm:-right-16"
+          data-ui-variant="text"
+          type="button"
+          class="ui-control absolute right-0 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-[#d97757]/30 bg-white/95 text-[#d97757] shadow-lg transition hover:scale-105 hover:bg-[#fdf0e8] disabled:cursor-not-allowed disabled:opacity-30 dark:bg-[#1e1e1c] dark:hover:bg-[#2e2018] sm:-right-16"
           :disabled="view === 'review' && !checked"
           title="下一个"
-          aria-label="下一个单词"
+          aria-label="下一词"
           @click="nextWord"
         >
           <svg
@@ -1582,7 +1637,13 @@ onUnmounted(() => {
           </svg>
         </button>
         <div class="mb-5 flex items-center justify-between text-sm">
-          <button class="flex items-center gap-1 text-[#788c5d]" @click="view = 'library'">
+          <button
+            data-ui-variant="default"
+            type="button"
+            data-dialog-cancel
+            class="ui-control flex items-center gap-1 text-[#788c5d]"
+            @click="view = 'library'"
+          >
             <svg
               width="15"
               height="15"
@@ -1611,7 +1672,10 @@ onUnmounted(() => {
                 v-html="cleanHtml(currentWord.word)"
               />
               <button
-                class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#fdf0e8] text-[#d97757] dark:bg-[#2e2018]"
+                data-ui-variant="text"
+                type="button"
+                aria-label="播放发音"
+                class="ui-control flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#fdf0e8] text-[#d97757] dark:bg-[#2e2018]"
                 title="播放读音"
                 @click="playCurrentAudio"
               >
@@ -1644,8 +1708,10 @@ onUnmounted(() => {
           <div class="px-6 py-7 sm:px-8">
             <template v-if="view === 'learn'">
               <button
+                data-ui-variant="default"
+                type="button"
                 v-if="!revealed"
-                class="w-full rounded-[8px] border border-[#d97757] py-3 text-[#d97757]"
+                class="ui-control w-full rounded-[8px] border border-[#d97757] py-3 text-[#d97757]"
                 @click="revealed = true"
               >
                 显示翻译和注释
@@ -1696,7 +1762,7 @@ onUnmounted(() => {
               }}</label>
               <input
                 v-model="answer"
-                class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-4 py-3 outline-none focus:border-[#d97757] dark:border-[#444]"
+                class="ui-field w-full rounded-[8px] border border-[#ddd] bg-transparent px-4 py-3 outline-none focus:border-[#d97757] dark:border-[#444]"
                 :readonly="checked"
                 @keydown.enter.stop.prevent="checked ? nextWord() : checkAnswer()"
               />
@@ -1735,7 +1801,10 @@ onUnmounted(() => {
                       v-html="cleanHtml(currentWord.phonetic)"
                     />
                     <button
-                      class="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-white/70 text-[#d97757] dark:bg-black/20"
+                      data-ui-variant="text"
+                      type="button"
+                      aria-label="播放发音"
+                      class="ui-control ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-white/70 text-[#d97757] dark:bg-black/20"
                       title="播放读音"
                       @click="playCurrentAudio"
                     >
@@ -1800,7 +1869,9 @@ onUnmounted(() => {
                 进入下一题
               </div>
               <button
-                class="mt-5 w-full rounded-[8px] bg-[#d97757] py-3 font-medium text-white disabled:opacity-50"
+                data-ui-variant="primary"
+                type="button"
+                class="ui-control mt-5 w-full rounded-[8px] bg-[#d97757] py-3 font-medium text-white disabled:opacity-50"
                 :disabled="!checked && !answer.trim()"
                 @click="checked ? nextWord() : checkAnswer()"
               >
@@ -1811,7 +1882,10 @@ onUnmounted(() => {
         </div>
         <div v-if="view === 'learn'" class="mt-5 flex items-center justify-between gap-3">
           <button
-            class="rounded-[8px] border border-[#ddd] px-5 py-2.5 text-[#777] disabled:opacity-40 dark:border-[#444]"
+            aria-label="上一词"
+            data-ui-variant="text"
+            type="button"
+            class="ui-control rounded-[8px] border border-[#ddd] px-5 py-2.5 text-[#777] disabled:opacity-40 dark:border-[#444]"
             :disabled="currentIndex <= 0"
             @click="previousWord"
           >
@@ -1825,7 +1899,13 @@ onUnmounted(() => {
             >
             下一词</span
           >
-          <button class="rounded-[8px] bg-[#d97757] px-6 py-2.5 text-white" @click="nextWord">
+          <button
+            aria-label="下一词"
+            data-ui-variant="primary"
+            type="button"
+            class="ui-control rounded-[8px] bg-[#d97757] px-6 py-2.5 text-white"
+            @click="nextWord"
+          >
             下一个 · Enter ↵
           </button>
         </div>
@@ -1838,6 +1918,7 @@ onUnmounted(() => {
       @click.self="!busy && (inspection = null)"
     >
       <div
+        v-dialog-surface="'单词学习'"
         class="max-h-[90vh] w-full max-w-[760px] overflow-y-auto rounded-[8px] bg-white p-6 text-[#141413] shadow-xl"
       >
         <h2 class="text-xl font-bold">确认字段对应</h2>
@@ -1850,7 +1931,7 @@ onUnmounted(() => {
           <input
             v-model="importName"
             maxlength="80"
-            class="w-full rounded-[8px] border border-[#ddd] px-3 py-2 outline-none focus:border-[#d97757]"
+            class="ui-field w-full rounded-[8px] border border-[#ddd] px-3 py-2 outline-none focus:border-[#d97757]"
           />
         </label>
         <div
@@ -1862,28 +1943,33 @@ onUnmounted(() => {
           <div class="mt-4 grid gap-3 sm:grid-cols-2">
             <label v-for="[target, label] in fieldTargets" :key="target" class="text-sm">
               <span class="mb-1 block text-xs text-[#777]">{{ label }}</span>
-              <select
+              <MetadataSelect
                 v-model="mappings[String(model.id)][target]"
-                class="w-full rounded-[8px] border border-[#ddd] px-3 py-2"
-              >
-                <option :value="undefined">不使用</option>
-                <option v-for="field in model.fields" :key="field.ordinal" :value="field.ordinal">
-                  {{ field.name }}
-                </option>
-              </select>
+                :label="`${model.name}：${label}`"
+                :clearable="false"
+                :options="[
+                  { value: undefined, label: '不使用' },
+                  ...model.fields.map((field) => ({ value: field.ordinal, label: field.name })),
+                ]"
+              />
             </label>
           </div>
         </div>
         <div class="mt-6 flex justify-end gap-3">
           <button
-            class="rounded-[8px] border px-5 py-2"
+            data-ui-variant="default"
+            type="button"
+            data-dialog-cancel
+            class="ui-control rounded-[8px] border px-5 py-2"
             :disabled="busy"
             @click="inspection = null"
           >
             取消
           </button>
           <button
-            class="rounded-[8px] bg-[#d97757] px-5 py-2 text-white disabled:opacity-50"
+            data-ui-variant="primary"
+            type="button"
+            class="ui-control rounded-[8px] bg-[#d97757] px-5 py-2 text-white disabled:opacity-50"
             :disabled="busy || !importName.trim()"
             @click="confirmImport"
           >
@@ -1899,6 +1985,7 @@ onUnmounted(() => {
       @click.self="!busy && (textImportOpen = false)"
     >
       <div
+        v-dialog-surface="'单词学习'"
         class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[8px] bg-white p-6 text-[#141413] shadow-xl dark:bg-[#1e1e1c] dark:text-[#faf9f5]"
       >
         <h2 class="text-lg font-bold">粘贴表格导入单词</h2>
@@ -1912,22 +1999,25 @@ onUnmounted(() => {
         </p>
         <label class="mt-5 block text-sm">
           <span class="mb-1 block text-xs text-[#777]">导入目标</span>
-          <select
+          <MetadataSelect
             v-model="textImportTargetId"
-            class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 outline-none focus:border-[#d97757] dark:border-[#444]"
-          >
-            <option value="__new__">新建词库</option>
-            <option v-for="item in archives" :key="item.id" :value="item.id">
-              追加到：{{ item.name }}（{{ item.wordCount }} 个词）
-            </option>
-          </select>
+            label="导入目标"
+            :clearable="false"
+            :options="[
+              { value: '__new__', label: '新建词库' },
+              ...archives.map((item) => ({
+                value: item.id,
+                label: `追加到：${item.name}（${item.wordCount} 个词）`,
+              })),
+            ]"
+          />
         </label>
         <label v-if="textImportTargetId === '__new__'" class="mt-4 block text-sm">
           <span class="mb-1 block text-xs text-[#777]">新词库名称</span>
           <input
             v-model="textImportName"
             maxlength="80"
-            class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 outline-none focus:border-[#d97757] dark:border-[#444]"
+            class="ui-field w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 outline-none focus:border-[#d97757] dark:border-[#444]"
           />
         </label>
         <div class="mt-4 grid gap-3 sm:grid-cols-3">
@@ -1935,21 +2025,21 @@ onUnmounted(() => {
             <span class="mb-1 block text-xs text-[#777]">释义字段别名</span>
             <input
               v-model="textImportMeaningLabels"
-              class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]"
+              class="ui-field w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]"
             />
           </label>
           <label class="text-sm">
             <span class="mb-1 block text-xs text-[#777]">例句字段别名</span>
             <input
               v-model="textImportExampleLabels"
-              class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]"
+              class="ui-field w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]"
             />
           </label>
           <label class="text-sm">
             <span class="mb-1 block text-xs text-[#777]">解析字段别名</span>
             <input
               v-model="textImportDetailsLabels"
-              class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]"
+              class="ui-field w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-xs outline-none focus:border-[#d97757] dark:border-[#444]"
             />
           </label>
         </div>
@@ -1957,7 +2047,7 @@ onUnmounted(() => {
           <span class="mb-1 block text-xs text-[#777]">为本次导入统一添加标签</span>
           <input
             v-model="textImportBatchTags"
-            class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-sm outline-none focus:border-[#d97757] dark:border-[#444]"
+            class="ui-field w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-sm outline-none focus:border-[#d97757] dark:border-[#444]"
             placeholder="例如：SQL, 数据库, 后端（多个标签用逗号分隔）"
           />
         </label>
@@ -1966,7 +2056,7 @@ onUnmounted(() => {
           <textarea
             v-model="textImportText"
             rows="12"
-            class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 font-mono text-sm leading-6 outline-none focus:border-[#d97757] dark:border-[#444]"
+            class="ui-field w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 font-mono text-sm leading-6 outline-none focus:border-[#d97757] dark:border-[#444]"
             placeholder="在此粘贴单词表…"
             :disabled="busy"
           />
@@ -1988,14 +2078,19 @@ onUnmounted(() => {
         </div>
         <div class="mt-6 flex justify-end gap-3">
           <button
-            class="rounded-[8px] border border-[#ddd] px-5 py-2 text-sm dark:border-[#444]"
+            data-ui-variant="default"
+            type="button"
+            data-dialog-cancel
+            class="ui-control rounded-[8px] border border-[#ddd] px-5 py-2 text-sm dark:border-[#444]"
             :disabled="busy"
             @click="textImportOpen = false"
           >
             取消
           </button>
           <button
-            class="rounded-[8px] bg-[#d97757] px-5 py-2 text-sm text-white disabled:opacity-50"
+            data-ui-variant="primary"
+            type="button"
+            class="ui-control rounded-[8px] bg-[#d97757] px-5 py-2 text-sm text-white disabled:opacity-50"
             :disabled="
               busy ||
               !textImportPreview.length ||
@@ -2015,6 +2110,7 @@ onUnmounted(() => {
       @click.self="!busy && (newArchiveOpen = false)"
     >
       <form
+        v-dialog-surface="'单词学习'"
         class="w-full max-w-md rounded-[8px] bg-white p-6 text-[#141413] shadow-xl dark:bg-[#1e1e1c] dark:text-[#faf9f5]"
         @submit.prevent="createArchive"
       >
@@ -2025,18 +2121,22 @@ onUnmounted(() => {
           autofocus
           maxlength="80"
           placeholder="例如：雅思核心词汇"
-          class="mt-5 w-full rounded-[8px] border border-[#ddd] bg-transparent px-4 py-3 outline-none focus:border-[#d97757] dark:border-[#444]"
+          class="ui-field mt-5 w-full rounded-[8px] border border-[#ddd] bg-transparent px-4 py-3 outline-none focus:border-[#d97757] dark:border-[#444]"
         />
         <div class="mt-6 flex justify-end gap-2">
           <button
+            data-ui-variant="default"
+            data-dialog-cancel
             type="button"
-            class="rounded-[8px] px-4 py-2 text-[#777]"
+            class="ui-control rounded-[8px] px-4 py-2 text-[#777]"
             @click="newArchiveOpen = false"
           >
             取消
           </button>
           <button
-            class="rounded-[8px] bg-[#d97757] px-5 py-2 text-white disabled:opacity-50"
+            data-ui-variant="primary"
+            type="submit"
+            class="ui-control rounded-[8px] bg-[#d97757] px-5 py-2 text-white disabled:opacity-50"
             :disabled="busy || !newArchiveName.trim()"
           >
             {{ busy ? '正在创建...' : '创建' }}
@@ -2051,6 +2151,7 @@ onUnmounted(() => {
       @click.self="addWordOpen = false"
     >
       <form
+        v-dialog-surface="'单词学习'"
         class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[8px] bg-white p-6 text-[#141413] shadow-xl dark:bg-[#1e1e1c] dark:text-[#faf9f5]"
         @submit.prevent="addWord"
       >
@@ -2061,20 +2162,20 @@ onUnmounted(() => {
             ><input
               v-model="wordDraft.word"
               autofocus
-              class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+              class="ui-field w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
           /></label>
           <label class="text-sm"
             ><span class="mb-1 block text-xs text-[#777]">音标</span
             ><input
               v-model="wordDraft.phonetic"
-              class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+              class="ui-field w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
           /></label>
           <label class="text-sm sm:col-span-2"
             ><span class="mb-1 block text-xs text-[#777]">中文释义 *</span
             ><textarea
               v-model="wordDraft.meaning"
               rows="2"
-              class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+              class="ui-field w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
             />
           </label>
           <label class="text-sm"
@@ -2082,7 +2183,7 @@ onUnmounted(() => {
             ><textarea
               v-model="wordDraft.exampleEn"
               rows="3"
-              class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+              class="ui-field w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
             />
           </label>
           <label class="text-sm"
@@ -2090,7 +2191,7 @@ onUnmounted(() => {
             ><textarea
               v-model="wordDraft.exampleZh"
               rows="3"
-              class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+              class="ui-field w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
             />
           </label>
           <label class="text-sm sm:col-span-2"
@@ -2098,7 +2199,7 @@ onUnmounted(() => {
             ><textarea
               v-model="wordDraft.details"
               rows="5"
-              class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+              class="ui-field w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
             />
           </label>
           <label class="text-sm"
@@ -2106,22 +2207,30 @@ onUnmounted(() => {
             ><textarea
               v-model="wordDraft.note"
               rows="2"
-              class="w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+              class="ui-field w-full resize-y rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
             />
           </label>
           <label class="text-sm"
             ><span class="mb-1 block text-xs text-[#777]">标签（逗号或空格分隔）</span
             ><input
               v-model="wordDraft.tags"
-              class="w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
+              class="ui-field w-full rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2.5 dark:border-[#444]"
           /></label>
         </div>
         <div class="mt-6 flex justify-end gap-2">
-          <button type="button" class="rounded-[8px] px-4 py-2 text-[#777]" @click="closeAddWord">
+          <button
+            data-ui-variant="default"
+            data-dialog-cancel
+            type="button"
+            class="ui-control rounded-[8px] px-4 py-2 text-[#777]"
+            @click="closeAddWord"
+          >
             取消
           </button>
           <button
-            class="rounded-[8px] bg-[#788c5d] px-5 py-2 text-white disabled:opacity-50"
+            data-ui-variant="primary"
+            type="submit"
+            class="ui-control rounded-[8px] bg-[#788c5d] px-5 py-2 text-white disabled:opacity-50"
             :disabled="!wordDraft.word.trim() || !wordDraft.meaning.trim()"
           >
             {{ editingWordId ? '保存修改' : '保存单词' }}
@@ -2136,6 +2245,7 @@ onUnmounted(() => {
       @click.self="deleteWordOpen = false"
     >
       <div
+        v-dialog-surface="'单词学习'"
         class="w-full max-w-sm rounded-[8px] bg-white p-6 text-[#141413] shadow-xl dark:bg-[#1e1e1c] dark:text-[#faf9f5]"
       >
         <h2 class="text-lg font-bold">删除单词？</h2>
@@ -2143,9 +2253,20 @@ onUnmounted(() => {
           “{{ plainText(deletingWord.word) }}”将从当前词库和学习计划中移除。
         </p>
         <div class="mt-6 flex justify-end gap-2">
-          <button class="rounded-[8px] px-4 py-2 text-[#777]" @click="deleteWordOpen = false">
+          <button
+            data-ui-variant="default"
+            type="button"
+            data-dialog-cancel
+            class="ui-control rounded-[8px] px-4 py-2 text-[#777]"
+            @click="deleteWordOpen = false"
+          >
             取消</button
-          ><button class="rounded-[8px] bg-red-600 px-5 py-2 text-white" @click="confirmDeleteWord">
+          ><button
+            data-ui-variant="danger"
+            type="button"
+            class="ui-control rounded-[8px] bg-red-600 px-5 py-2 text-white"
+            @click="confirmDeleteWord"
+          >
             删除
           </button>
         </div>
@@ -2158,6 +2279,7 @@ onUnmounted(() => {
       @click.self="!deletingArchive && (deleteArchiveOpen = false)"
     >
       <div
+        v-dialog-surface="'单词学习'"
         class="w-full max-w-md rounded-[8px] bg-white p-6 text-[#141413] shadow-xl dark:bg-[#1e1e1c] dark:text-[#faf9f5]"
       >
         <h2 class="text-lg font-bold">删除词库“{{ archive.name }}”？</h2>
@@ -2172,14 +2294,19 @@ onUnmounted(() => {
         </p>
         <div class="mt-6 flex justify-end gap-2">
           <button
-            class="rounded-[8px] px-4 py-2 text-sm text-[#777] disabled:opacity-50"
+            data-ui-variant="default"
+            type="button"
+            data-dialog-cancel
+            class="ui-control rounded-[8px] px-4 py-2 text-sm text-[#777] disabled:opacity-50"
             :disabled="deletingArchive"
             @click="deleteArchiveOpen = false"
           >
             取消
           </button>
           <button
-            class="rounded-[8px] bg-red-600 px-4 py-2 text-sm text-white disabled:opacity-50"
+            data-ui-variant="danger"
+            type="button"
+            class="ui-control rounded-[8px] bg-red-600 px-4 py-2 text-sm text-white disabled:opacity-50"
             :disabled="deletingArchive"
             @click="confirmDeleteArchive"
           >
@@ -2195,6 +2322,7 @@ onUnmounted(() => {
       @click.self="curveSettingsOpen = false"
     >
       <div
+        v-dialog-surface="'单词学习'"
         class="w-full max-w-lg rounded-[8px] bg-white p-6 text-[#141413] shadow-xl dark:bg-[#1e1e1c] dark:text-[#faf9f5]"
       >
         <h2 class="text-lg font-bold">复习曲线设置</h2>
@@ -2212,7 +2340,7 @@ onUnmounted(() => {
                 type="number"
                 min="1"
                 max="3650"
-                class="w-24 rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-right dark:border-[#444]"
+                class="ui-field w-24 rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-right dark:border-[#444]"
               />
               天后</span
             >
@@ -2227,7 +2355,7 @@ onUnmounted(() => {
                 type="number"
                 min="1"
                 max="10080"
-                class="w-24 rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-right dark:border-[#444]"
+                class="ui-field w-24 rounded-[8px] border border-[#ddd] bg-transparent px-3 py-2 text-right dark:border-[#444]"
               />
               分钟</span
             >
@@ -2235,13 +2363,18 @@ onUnmounted(() => {
         </div>
         <div class="mt-6 flex justify-end gap-2">
           <button
-            class="rounded-[8px] px-4 py-2 text-sm text-[#777]"
+            data-ui-variant="default"
+            type="button"
+            data-dialog-cancel
+            class="ui-control rounded-[8px] px-4 py-2 text-sm text-[#777]"
             @click="curveSettingsOpen = false"
           >
             取消
           </button>
           <button
-            class="rounded-[8px] bg-[#d97757] px-4 py-2 text-sm text-white"
+            data-ui-variant="primary"
+            type="button"
+            class="ui-control rounded-[8px] bg-[#d97757] px-4 py-2 text-sm text-white"
             @click="saveCurveSettings"
           >
             保存设置

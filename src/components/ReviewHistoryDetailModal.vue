@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vDialogSurface } from '@/directives/dialogSurface'
 import { computed } from 'vue'
 import type { ReviewHistorySession } from '@/composables/useStats'
 import { sanitizeHtml, formatMcOptions } from '@/utils/sanitize'
@@ -46,11 +47,14 @@ function masteryLabel(quality: number | string): string {
     forgot: '完全未掌握',
     unfamiliar: '不熟练',
     mastered: '已掌握',
+    submitted: '已作答',
   }
   return labels[String(quality)] || '已复习'
 }
 
 function masteryClass(quality: number | string): string {
+  if (quality === 'submitted')
+    return 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
   if (quality === 'forgot') return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
   if (quality === 'unfamiliar')
     return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
@@ -79,6 +83,7 @@ function optionClass(entry: ReviewHistorySession['entries'][number], key: string
     @click.self="emit('close')"
   >
     <div
+      v-dialog-surface="'复习详情'"
       class="flex h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-gray-50 shadow-2xl dark:bg-[#10100f]"
     >
       <div
@@ -100,7 +105,11 @@ function optionClass(entry: ReviewHistorySession['entries'][number], key: string
           </p>
         </div>
         <button
-          class="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:text-brand-mid dark:hover:bg-[#2a2a28]"
+          data-ui-variant="text"
+          type="button"
+          aria-label="关闭"
+          data-dialog-cancel
+          class="ui-control rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:text-brand-mid dark:hover:bg-[#2a2a28]"
           @click="emit('close')"
         >
           <svg
@@ -273,6 +282,13 @@ function optionClass(entry: ReviewHistorySession['entries'][number], key: string
                   v-html="sanitizeHtml(formatMcOptions(entry.correctAnswer || '无内容'))"
                 />
               </div>
+            </div>
+            <div
+              v-if="entry.answerText"
+              class="mt-3 rounded-lg border border-[var(--neo-line)] p-3 text-sm text-gray-700 dark:text-brand-light-gray"
+            >
+              <div class="mb-1 text-[11px] font-semibold text-accent">本次作答</div>
+              <p class="whitespace-pre-wrap break-words">{{ entry.answerText }}</p>
             </div>
             <div
               v-if="entry.reviewNote"

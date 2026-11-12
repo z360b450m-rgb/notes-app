@@ -58,11 +58,53 @@
   margin: 8px 0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
+
+/* Keep pastel highlights readable in both light and dark themes. */
+.md-content .text-highlight {
+  color: #1f2937;
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.md-content [data-entry-link] {
+  color: #2563eb !important;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(37, 99, 235, 0.35);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.md-content [data-entry-link]:hover {
+  color: #1d4ed8 !important;
+  text-decoration-color: currentColor;
+}
+
+.md-content [data-entry-link-state='broken'] {
+  color: #9ca3af !important;
+  cursor: not-allowed;
+  text-decoration-style: dashed;
+}
+
+.dark .md-content [data-entry-link] {
+  color: #60a5fa !important;
+  text-decoration-color: rgba(96, 165, 250, 0.4);
+}
+
+.dark .md-content [data-entry-link-state='broken'] {
+  color: #6b7280 !important;
+}
+
+/* Formatting wrappers inside a question link share its semantic color. */
+.md-content [data-entry-link] * {
+  color: inherit !important;
+}
 .md-content h1,
 .md-content h2,
 .md-content h3 {
   margin: 10px 0 6px;
-  font-size: 1.1em;
+  font-weight: 600;
 }
 .md-content p {
   margin: 4px 0;
@@ -73,12 +115,10 @@
   padding: 12px;
   border-radius: 6px;
   overflow-x: auto;
-  font-size: 12px;
   margin: 8px 0;
 }
 .md-content code {
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 0.9em;
 }
 .md-content :not(pre) > code {
   background: #e8e6dc;
@@ -104,7 +144,6 @@
   border-collapse: collapse;
   width: 100%;
   margin: 8px 0;
-  font-size: 13px;
 }
 .md-content th,
 .md-content td {
@@ -134,23 +173,33 @@
   overflow-wrap: anywhere;
 }
 
-/* Comfortable UI type scale. Rich-text content keeps its own user-controlled size. */
-#app .text-\[10px\] {
-  font-size: 12px;
+/* One comfortable reading size across editors and review content. */
+.md-content {
+  font-size: var(--editor-font-size, 24px);
+  line-height: 1.75;
 }
-#app .text-\[11px\] {
-  font-size: 13px;
+
+/* Older notes may contain inline sizes or legacy <font size> markup. */
+.md-content :where(*):not(:where(.katex, .katex *)) {
+  font-size: inherit !important;
 }
-#app .text-\[12px\],
-#app .text-xs {
-  font-size: 14px;
-  line-height: 1.35rem;
+
+.editor-math {
+  display: inline-block;
+  vertical-align: baseline;
+  cursor: text;
 }
-#app .text-\[13px\],
-#app .text-sm {
-  font-size: 15px;
-  line-height: 1.45rem;
+.editor-math-block {
+  display: block;
+  max-width: 100%;
 }
+.editor-math .katex-display {
+  max-width: 100%;
+  margin: 0.6em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 .answer-details img,
 .answer-details video,
 .answer-details iframe {
@@ -190,10 +239,10 @@
 
 /* Stats panel slide transition */
 .stats-enter-active {
-  transition: opacity 0.2s ease;
+  transition: opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .stats-enter-active .fixed.right-0 {
-  transition: transform 0.25s ease;
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .stats-enter-from {
   opacity: 0;
@@ -202,16 +251,78 @@
   transform: translateX(100%);
 }
 .stats-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity 0.18s ease-in;
 }
 .stats-leave-active .fixed.right-0 {
-  transition: transform 0.2s ease;
+  transition: transform 0.18s ease-in;
 }
 .stats-leave-to {
   opacity: 0;
 }
 .stats-leave-to .fixed.right-0 {
   transform: translateX(100%);
+}
+
+/* Dialogs and contextual menus use restrained movement without bounce. */
+.stats-enter-active.fixed.items-center > :first-child,
+.modal-enter-active > :first-child {
+  transition:
+    opacity 220ms ease-out,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.stats-leave-active.fixed.items-center > :first-child,
+.modal-leave-active > :first-child {
+  transition:
+    opacity 140ms ease-in,
+    transform 140ms ease-in;
+}
+.stats-enter-from.fixed.items-center > :first-child,
+.stats-leave-to.fixed.items-center > :first-child,
+.modal-enter-from > :first-child,
+.modal-leave-to > :first-child {
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+}
+.modal-enter-active {
+  transition: opacity 220ms ease-out;
+}
+.modal-leave-active {
+  transition: opacity 140ms ease-in;
+}
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+}
+.popover-enter-active {
+  transition:
+    opacity 160ms ease-out,
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.popover-leave-active {
+  transition:
+    opacity 140ms ease-in,
+    transform 140ms ease-in;
+}
+.popover-enter-from,
+.popover-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .stats-enter-active,
+  .stats-leave-active,
+  .stats-enter-active .fixed.right-0,
+  .stats-leave-active .fixed.right-0,
+  .stats-enter-active.fixed.items-center > :first-child,
+  .stats-leave-active.fixed.items-center > :first-child,
+  .modal-enter-active,
+  .modal-leave-active,
+  .modal-enter-active > :first-child,
+  .modal-leave-active > :first-child,
+  .popover-enter-active,
+  .popover-leave-active {
+    transition: none;
+  }
 }
 
 /* Section collapse/expand via CSS Grid (auto-height animation) */

@@ -1,8 +1,9 @@
 import DOMPurify from 'dompurify'
 import { toDisplayHtml } from '@/services/imageStorage'
+import { renderMathHtml } from '@/utils/editorMath'
 
 export function sanitizeHtml(html: string): string {
-  return toDisplayHtml(DOMPurify.sanitize(html))
+  return renderMathHtml(toDisplayHtml(DOMPurify.sanitize(html)))
 }
 
 // Insert line breaks before A/B/C/D multiple-choice option markers.

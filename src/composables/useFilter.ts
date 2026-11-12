@@ -1,6 +1,8 @@
-import { ref, computed, type Ref, type ComputedRef } from 'vue'
+import { ref, computed, watch, onScopeDispose, type Ref, type ComputedRef } from 'vue'
 import type { NoteEntry, QuestionGroup } from '@/types'
 import { MASTERY_LEVEL_DEFS, getMasteryLevel } from '@/composables/useStats'
+import { dedupeById } from '@/utils/dedupeById'
+import { IncompleteSearchError, matchesEntry } from '@/services/entrySummary'
 
 export type SortKey = 'updatedAt' | 'createdAt' | 'subject' | 'title' | 'custom' | 'shuffle'
 export type SortDir = 'asc' | 'desc'
@@ -9,6 +11,7 @@ export interface FilterState {
   activeSubject: Ref<string>
   activeTag: Ref<string | null>
   activeSource: Ref<string | null>
+  activeFolder: Ref<string | null>
   activeMastery: Ref<string>
   searchQuery: Ref<string>
   sortKey: Ref<SortKey>
@@ -17,13 +20,17 @@ export interface FilterState {
   subjectMap: ComputedRef<Record<string, number>>
   tagMap: ComputedRef<Record<string, number>>
   sourceMap: ComputedRef<Record<string, number>>
+  folderMap: ComputedRef<Record<string, number>>
   masteryMap: ComputedRef<Record<string, number>>
   setSubject: (s: string) => void
   setTag: (t: string) => void
   setSource: (s: string) => void
+  setFolder: (folder: string | null) => void
   setMastery: (label: string) => void
   setSearch: (q: string) => void
   setSort: (key: SortKey, dir?: SortDir) => void
+  searchLoading: Ref<boolean>
+  searchError: Ref<string>
 }
 
 // ===================================================================
@@ -34,20 +41,55 @@ export interface FilterState {
 export function useFilter(
   entries: Ref<NoteEntry[]>,
   questionGroups?: Ref<QuestionGroup[]>,
+  searchIds?: (query: string) => Promise<string[]>,
 ): FilterState {
   const activeSubject = ref('__all__')
   const activeTag = ref<string | null>(null)
   const activeSource = ref<string | null>(null)
+  const activeFolder = ref<string | null>(null)
   const activeMastery = ref('__all__')
   const searchQuery = ref('')
   const sortKey = ref<SortKey>('updatedAt')
   const sortDir = ref<SortDir>('desc')
   const shuffleSeed = ref(0)
+  const searchLoading = ref(false)
+  const searchError = ref('')
+  const matchingIds = ref<Set<string> | null>(null)
+  let searchSequence = 0
+  let searchTimer: ReturnType<typeof setTimeout> | undefined
+  watch([searchQuery, () => entries.value[0]?.notebookId], ([query]) => {
+    const sequence = ++searchSequence
+    clearTimeout(searchTimer)
+    matchingIds.value = null
+    searchError.value = ''
+    searchLoading.value = !!query.trim() && !!searchIds
+    if (!searchLoading.value) return
+    searchTimer = setTimeout(async () => {
+      try {
+        const ids = await searchIds!(query)
+        if (sequence === searchSequence) matchingIds.value = new Set(ids)
+      } catch (error) {
+        if (sequence === searchSequence) {
+          if (error instanceof IncompleteSearchError) matchingIds.value = new Set(error.matches)
+          searchError.value =
+            error instanceof IncompleteSearchError
+              ? error.message
+              : '全文搜索暂时不可用，请确认后台服务已启动后重试'
+        }
+      } finally {
+        if (sequence === searchSequence) searchLoading.value = false
+      }
+    }, 200)
+  })
+  onScopeDispose(() => {
+    ++searchSequence
+    clearTimeout(searchTimer)
+  })
 
   const filteredEntries = computed(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const _seed = shuffleSeed.value // re-compute when shuffle is clicked again
-    let list = [...entries.value]
+    let list = dedupeById(entries.value)
 
     if (activeSubject.value !== '__all__') {
       if (activeSubject.value === '__none__') {
@@ -77,15 +119,22 @@ export function useFilter(
       const materialByGroupId = new Map(
         (questionGroups?.value || []).map((group) => [group.id, group.material.toLowerCase()]),
       )
-      list = list.filter(
-        (e) =>
+      list = list.filter((e) => {
+        // Current drafts take precedence over an older server search result.
+        if (!e.isSummary) return matchesEntry(e, q, materialByGroupId.get(e.groupId ?? ''))
+        return (
+          matchingIds.value?.has(e.id) ||
+          (e.title || '').toLowerCase().includes(q) ||
+          (e.questionPreview || '').toLowerCase().includes(q) ||
           (e.question || '').toLowerCase().includes(q) ||
           (e.wrongAnswer || '').toLowerCase().includes(q) ||
           (e.correctAnswer || '').toLowerCase().includes(q) ||
           (e.subject || '').toLowerCase().includes(q) ||
           (e.source || '').toLowerCase().includes(q) ||
-          (e.groupId ? materialByGroupId.get(e.groupId)?.includes(q) : false),
-      )
+          (e.tags || []).some((tag) => tag.toLowerCase().includes(q)) ||
+          (e.groupId ? materialByGroupId.get(e.groupId)?.includes(q) : false)
+        )
+      })
     }
 
     const dir = sortDir.value === 'asc' ? 1 : -1
@@ -125,7 +174,7 @@ export function useFilter(
 
   const subjectMap = computed(() => {
     const map: Record<string, number> = {}
-    entries.value.forEach((e) => {
+    dedupeById(entries.value).forEach((e) => {
       if (e.subject) map[e.subject] = (map[e.subject] || 0) + 1
     })
     return map
@@ -133,7 +182,7 @@ export function useFilter(
 
   const tagMap = computed(() => {
     const map: Record<string, number> = {}
-    entries.value.forEach((e) =>
+    dedupeById(entries.value).forEach((e) =>
       (e.tags || []).forEach((t) => {
         map[t] = (map[t] || 0) + 1
       }),
@@ -143,8 +192,16 @@ export function useFilter(
 
   const sourceMap = computed(() => {
     const map: Record<string, number> = {}
-    entries.value.forEach((e) => {
+    dedupeById(entries.value).forEach((e) => {
       if (e.source) map[e.source] = (map[e.source] || 0) + 1
+    })
+    return map
+  })
+
+  const folderMap = computed(() => {
+    const map: Record<string, number> = {}
+    dedupeById(entries.value).forEach((e) => {
+      if (e.folder) map[e.folder] = (map[e.folder] || 0) + 1
     })
     return map
   })
@@ -169,10 +226,14 @@ export function useFilter(
     }
   }
 
+  function setFolder(folder: string | null) {
+    activeFolder.value = folder === '__all__' ? null : folder
+  }
+
   const masteryMap = computed(() => {
     const map: Record<string, number> = {}
     for (const b of MASTERY_LEVEL_DEFS) map[b.label] = 0
-    entries.value.forEach((e) => {
+    dedupeById(entries.value).forEach((e) => {
       const level = getMasteryLevel(e)
       const bucket = MASTERY_LEVEL_DEFS.find((b) => b.level === level)
       if (bucket) map[bucket.label]++
@@ -203,9 +264,12 @@ export function useFilter(
   }
 
   return {
+    searchLoading,
+    searchError,
     activeSubject,
     activeTag,
     activeSource,
+    activeFolder,
     activeMastery,
     searchQuery,
     sortKey,
@@ -214,10 +278,12 @@ export function useFilter(
     subjectMap,
     tagMap,
     sourceMap,
+    folderMap,
     masteryMap,
     setSubject,
     setTag,
     setSource,
+    setFolder,
     setMastery,
     setSearch,
     setSort,
