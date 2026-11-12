@@ -1,3 +1,4 @@
+import { API_BASE, fetchApi } from './apiConfig'
 import { getAccessToken } from './auth'
 import { readReviewAgentResponse, type ReviewAgentCallbacks } from './reviewAgent'
 
@@ -54,7 +55,7 @@ export interface ReviewInsight {
   actions: { action: ReviewInsightAction; label: string }[]
 }
 
-const API_BASE = 'http://localhost:8000/api/entries'
+const ENTRIES_API = `${API_BASE}/entries`
 
 function authHeaders(): Record<string, string> {
   const token = getAccessToken()
@@ -66,7 +67,7 @@ export async function getReviewInsight(
   entryId: string,
   signal?: AbortSignal,
 ): Promise<ReviewInsight> {
-  const response = await fetch(`${API_BASE}/${encodeURIComponent(entryId)}/review-insight`, {
+  const response = await fetchApi(`${ENTRIES_API}/${encodeURIComponent(entryId)}/review-insight`, {
     headers: authHeaders(),
     signal: signal ?? AbortSignal.timeout(10_000),
   })
@@ -89,7 +90,7 @@ export async function queryEntryReviewAssistant(
   kbIds: string[] = [],
   message?: string,
 ): Promise<string> {
-  const response = await fetch(`${API_BASE}/${encodeURIComponent(entryId)}/review-assistant`, {
+  const response = await fetchApi(`${ENTRIES_API}/${encodeURIComponent(entryId)}/review-assistant`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -108,7 +109,7 @@ export async function assessReviewImportance(
   entryId: string,
   signal?: AbortSignal,
 ): Promise<ReviewInsight> {
-  const response = await fetch(`${API_BASE}/${encodeURIComponent(entryId)}/review-importance`, {
+  const response = await fetchApi(`${ENTRIES_API}/${encodeURIComponent(entryId)}/review-importance`, {
     method: 'POST',
     headers: authHeaders(),
     signal: signal ?? AbortSignal.timeout(65_000),

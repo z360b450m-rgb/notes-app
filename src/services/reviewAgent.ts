@@ -1,3 +1,4 @@
+import { API_BASE, fetchApi } from './apiConfig'
 import { getAccessToken } from './auth'
 
 export interface ClarificationChoice {
@@ -36,8 +37,8 @@ export async function generateReviewAgentTitle(
 ): Promise<string> {
   const token = getAccessToken()
   if (!token) throw new Error(localMode ? serverRequiredMessage : '请先登录')
-  const response = await fetch(
-    `http://localhost:8000/api/review-agent/history/${encodeURIComponent(sessionId)}/title`,
+  const response = await fetchApi(
+    `${API_BASE}/review-agent/history/${encodeURIComponent(sessionId)}/title`,
     { method: 'POST', headers: { Authorization: `Bearer ${token}` }, signal },
   )
   const payload = await response.json().catch(() => null)
@@ -55,8 +56,8 @@ export async function generateReviewAgentTitle(
 export async function deleteReviewAgentHistory(sessionId: string): Promise<void> {
   const token = getAccessToken()
   if (!token) throw new Error(localMode ? serverRequiredMessage : '请先登录后删除聊天记录')
-  const response = await fetch(
-    `http://localhost:8000/api/review-agent/history/${encodeURIComponent(sessionId)}`,
+  const response = await fetchApi(
+    `${API_BASE}/review-agent/history/${encodeURIComponent(sessionId)}`,
     { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
   )
   const payload = await response.json().catch(() => null)
@@ -140,7 +141,7 @@ export async function queryReviewAgent(
 ): Promise<string> {
   const token = getAccessToken()
   if (!token) throw new Error(localMode ? serverRequiredMessage : '请先登录后使用复习助手')
-  const response = await fetch('http://localhost:8000/api/review-agent/query', {
+  const response = await fetchApi(`${API_BASE}/review-agent/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({

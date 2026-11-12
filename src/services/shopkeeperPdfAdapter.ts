@@ -1,13 +1,14 @@
+import { API_BASE, fetchApi } from './apiConfig'
 import { getAccessToken } from './auth'
 import type { PdfImportRequest, PdfImportResult } from './pdfImport'
 import type { PdfDraft } from './pdfQuestionDraft'
 
-const BASE = 'http://localhost:8000/api/question-imports'
+const BASE = `${API_BASE}/question-imports`
 
 async function request(path: string, signal: AbortSignal, init: RequestInit = {}) {
   const token = getAccessToken()
   if (!token) throw new Error(localMode ? serverRequiredMessage : '请先登录后导入 PDF')
-  const response = await fetch(BASE + path, {
+  const response = await fetchApi(BASE + path, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, ...init.headers },
     signal,

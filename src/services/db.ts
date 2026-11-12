@@ -1,4 +1,5 @@
 // Persistent storage adapters. Keep the IndexedDB schema and Electron file format unchanged.
+import { API_BASE, fetchApi } from './apiConfig'
 import { getAccessToken, getStoredUser } from '@/services/auth'
 import { localMode } from '@/services/localMode'
 import { assertLoaded, entrySummary, groupSummary, matchesEntry } from './entrySummary'
@@ -792,7 +793,7 @@ export async function prepareUserStorage(): Promise<void> {
   const marker = `${DB_NAME}:legacy-migrated`
   if (localStorage.getItem(marker)) return
   try {
-    const response = await fetch('http://localhost:8000/api/notebooks', {
+    const response = await fetchApi(`${API_BASE}/notebooks`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5000),
     })

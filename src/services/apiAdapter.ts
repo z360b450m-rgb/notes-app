@@ -1,3 +1,4 @@
+import { API_BASE, HEALTH_URL, fetchApi } from './apiConfig'
 import type { NoteEntry, Notebook, QuestionGroup, ReviewLog } from '@/types'
 import type {
   EntryRepository,
@@ -21,8 +22,6 @@ import {
   IncompleteSearchError,
 } from './entrySummary'
 
-const API_BASE = 'http://localhost:8000/api'
-const HEALTH_URL = 'http://localhost:8000/health'
 const PENDING_QUEUE_KEY = 'offline_pending_sync_queue_v1'
 const REQUEST_TIMEOUT_MS = 5_000
 // A login/logout reloads the page. Pin requests and queues to this page's owner
@@ -219,7 +218,7 @@ async function fetchWithTimeout(
     const token = pageToken
     const headers = new Headers(init.headers)
     if (token) headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(url, { ...init, headers, signal: controller.signal })
+    const response = await fetchApi(url, { ...init, headers, signal: controller.signal })
     if (!response.ok && !acceptedStatuses.includes(response.status)) {
       throw new ApiError(`请求失败：HTTP ${response.status}`, response.status)
     }

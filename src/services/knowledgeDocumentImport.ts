@@ -1,10 +1,11 @@
+import { API_BASE, fetchApi } from './apiConfig'
 import { getAccessToken } from './auth'
 import type { KnowledgeLibrary } from '@/composables/useKnowledgeLibraries'
 
 export async function libraryRequest(path = '', init: RequestInit = {}, signal?: AbortSignal) {
   const token = getAccessToken()
   if (!token) throw new Error(localMode ? serverRequiredMessage : '请先登录后使用知识库')
-  const response = await fetch(`http://localhost:8000/api/knowledge/documents${path}`, {
+  const response = await fetchApi(`${API_BASE}/knowledge/documents${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, ...init.headers },
     signal,

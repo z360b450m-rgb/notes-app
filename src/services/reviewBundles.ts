@@ -1,3 +1,4 @@
+import { API_BASE, fetchApi } from './apiConfig'
 import { getAccessToken } from './auth'
 
 export interface ReviewBundle {
@@ -42,7 +43,7 @@ export interface ConfirmedReviewBundle {
 async function post(entryId: string, suffix: string, body: unknown, signal: AbortSignal) {
   const token = getAccessToken()
   if (!token) throw new Error(localMode ? serverRequiredMessage : '请登录后安排关联复习')
-  const response = await fetch(`http://localhost:8000/api/entries/${encodeURIComponent(entryId)}/${suffix}`, {
+  const response = await fetchApi(`${API_BASE}/entries/${encodeURIComponent(entryId)}/${suffix}`, {
     method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body), signal,
   })

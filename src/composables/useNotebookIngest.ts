@@ -1,3 +1,4 @@
+import { API_BASE, fetchApi } from '@/services/apiConfig'
 import { inject, onScopeDispose, ref, type InjectionKey } from 'vue'
 import { getAccessToken } from '@/services/auth'
 import type { createBackgroundTasks } from './useBackgroundTasks'
@@ -46,7 +47,7 @@ export function createNotebookIngest(
   async function request(path: string, body?: unknown) {
     const token = getAccessToken()
     if (!token) throw new Error(localMode ? serverRequiredMessage : '请先登录后执行入库')
-    const response = await fetch(`http://localhost:8000/api/knowledge${path}`, {
+    const response = await fetchApi(`${API_BASE}/knowledge${path}`, {
       method: body === undefined ? 'GET' : 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),

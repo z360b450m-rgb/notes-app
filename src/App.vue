@@ -9,7 +9,8 @@ import { RadioGroupRoot, RadioGroupItem } from 'reka-ui'
 import type { ConfirmedReviewBundle } from '@/services/reviewBundles'
 import { useEntries } from './composables/useEntries'
 import { migrateFromIndexedDB, migrateLegacyWebStorage, prepareUserStorage } from './services/db'
-import { localMode } from './services/localMode'
+import { localBackendTest, localMode } from './services/localMode'
+import { fetchApi, HEALTH_URL } from './services/apiConfig'
 import { useFilter } from './composables/useFilter'
 import type { SortKey, SortDir } from './composables/useFilter'
 import { useMetaStore } from './composables/useMetaStore'
@@ -62,6 +63,10 @@ const currentUser = ref<AuthUser | null>(getStoredUser())
 let appInitialized = false
 const startupLoading = ref(localMode || !!currentUser.value)
 const startupError = ref('')
+const testConnectionKey = 'renote:local-backend-connected'
+const testConnected = ref(!localBackendTest || sessionStorage.getItem(testConnectionKey) === 'yes')
+const testConnecting = ref(false)
+const testConnectionError = ref('')
 
 function handleAuthenticated(user: AuthUser) {
   currentUser.value = user
@@ -102,7 +107,7 @@ const notebookIngest = createNotebookIngest(
 )
 provide(notebookIngestKey, notebookIngest)
 onMounted(() => {
-  if (currentUser.value) void notebookIngest.refresh()
+  if (testConnected.value && currentUser.value) void notebookIngest.refresh()
 })
 
 const {
@@ -510,6 +515,7 @@ async function initializeApp() {
 }
 
 async function startApp() {
+  if (!testConnected.value) return
   if (!localMode && !currentUser.value) return
   startupLoading.value = true
   startupError.value = ''
@@ -524,6 +530,23 @@ async function startApp() {
     startupError.value = error instanceof Error ? error.message : '页面加载失败，请重试'
   } finally {
     startupLoading.value = false
+  }
+}
+
+async function connectLocalBackend() {
+  testConnecting.value = true
+  testConnectionError.value = ''
+  try {
+    const response = await fetchApi(HEALTH_URL, { signal: AbortSignal.timeout(30000) })
+    if (!response.ok || (await response.json()).status !== 'ok') throw new Error()
+    sessionStorage.setItem(testConnectionKey, 'yes')
+    testConnected.value = true
+    await startApp()
+    if (currentUser.value) void notebookIngest.refresh()
+  } catch {
+    testConnectionError.value = '无法连接本机服务。请确认错题本后端已启动，并在浏览器提示时允许访问本机网络。'
+  } finally {
+    testConnecting.value = false
   }
 }
 
@@ -995,7 +1018,26 @@ watch(activeId, (_newId) => {
 
 <template>
   <!-- @AI-VIEW: DOM 可自由重构。样式仅限 Tailwind CSS 工具类。严禁内联 style 或自定义 CSS。 -->
-  <AuthScreen v-if="!localMode && !currentUser" @authenticated="handleAuthenticated" />
+  <main
+    v-if="!testConnected"
+    class="flex min-h-screen flex-col items-center justify-center gap-4 bg-stone-50 px-6 text-center text-stone-800 dark:bg-stone-900 dark:text-stone-200"
+  >
+    <h1 class="text-2xl font-semibold">网站联调</h1>
+    <p>在运行错题本后端的电脑上打开此页面，连接后使用测试账号登录。</p>
+    <button
+      type="button"
+      data-ui-variant="primary"
+      class="ui-control rounded-lg bg-accent px-5 py-2 text-white"
+      :disabled="testConnecting"
+      @click="connectLocalBackend"
+    >
+      {{ testConnecting ? '正在连接…' : '连接本机服务' }}
+    </button>
+    <p v-if="testConnectionError" role="alert" class="max-w-md text-sm text-red-600">
+      {{ testConnectionError }}
+    </p>
+  </main>
+  <AuthScreen v-else-if="!localMode && !currentUser" @authenticated="handleAuthenticated" />
   <div
     v-else-if="startupLoading || startupError"
     class="flex min-h-screen flex-col items-center justify-center gap-4 bg-stone-50 px-6 text-center text-stone-600 dark:bg-stone-900 dark:text-stone-300"

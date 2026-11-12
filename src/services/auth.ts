@@ -1,6 +1,6 @@
+import { API_BASE, fetchApi } from './apiConfig'
 import { localMode } from './localMode'
 
-const API_BASE = 'http://localhost:8000/api'
 const TOKEN_KEY = 'notes_app_access_token'
 const USER_KEY = 'notes_app_current_user'
 const REQUEST_TIMEOUT_MS = 5_000
@@ -22,7 +22,7 @@ async function requestJson(
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal })
+    const response = await fetchApi(url, { ...init, signal: controller.signal })
     const payload: unknown = await response.json()
     if (!response.ok)
       throw new AuthError(readError(payload, '请求失败，请稍后重试'), response.status)

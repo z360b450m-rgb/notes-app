@@ -1,3 +1,4 @@
+import { API_BASE, fetchApi } from './apiConfig'
 import { getAccessToken } from './auth'
 import { toDisplayImageUrl } from './imageStorage'
 
@@ -19,7 +20,7 @@ export async function recognizeImageText(
   const data = new FormData()
   data.append('notebook_id', notebookId)
   data.append('file', blob, 'image')
-  const response = await fetch('http://localhost:8000/api/image-ocr', {
+  const response = await fetchApi(`${API_BASE}/image-ocr`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: data,

@@ -1,3 +1,4 @@
+import { API_BASE, fetchApi } from './apiConfig'
 import { getAccessToken } from './auth'
 
 export interface ReviewAttempt {
@@ -33,7 +34,7 @@ export interface ReviewAttempt {
   }
 }
 
-const API_BASE = 'http://localhost:8000/api/entries'
+const ENTRIES_API = `${API_BASE}/entries`
 
 // A saved grade remains separate from a completed, but unjudged, single-pass attempt.
 export function canAdvanceReviewAttempt(attempt: ReviewAttempt | null | undefined): boolean {
@@ -91,7 +92,7 @@ async function request(
 ): Promise<ReviewAttempt> {
   const token = getAccessToken()
   if (!token) throw new Error('请登录后使用智能判卷')
-  const response = await fetch(`${API_BASE}/${encodeURIComponent(entryId)}/${suffix}`, {
+  const response = await fetchApi(`${ENTRIES_API}/${encodeURIComponent(entryId)}/${suffix}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -152,8 +153,8 @@ export async function readReviewAttempt(
 ): Promise<ReviewAttempt> {
   const token = getAccessToken()
   if (!token) throw new Error('请登录后查看判卷状态')
-  const response = await fetch(
-    `${API_BASE}/${encodeURIComponent(entryId)}/review-attempts/${encodeURIComponent(attemptId)}`,
+  const response = await fetchApi(
+    `${ENTRIES_API}/${encodeURIComponent(entryId)}/review-attempts/${encodeURIComponent(attemptId)}`,
     {
       headers: { Authorization: `Bearer ${token}` },
       signal,
