@@ -89,13 +89,13 @@ const chapters: Record<string, ChapterMeta> = {
   },
   reviewing: {
     group: 'learn',
-    description: '选择复习范围，提交答案与理由，并查看核对结果。',
+    description: '提交答案与理由，查看核对结果，并针对点评向 AI 追问。',
     time: '4 分钟',
     entry: '工作区工具栏 → 进入复习',
   },
   assistant: {
     group: 'learn',
-    description: '发起学习对话，讨论单题或安排关联复习。',
+    description: '发起学习对话，讨论单题、安排关联复习或在复习中追问。',
     time: '3 分钟',
     entry: '应用首页 → 开始复习；单题 → 学习助手',
   },
